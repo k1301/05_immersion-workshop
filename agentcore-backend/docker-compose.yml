@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  agentcore-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentcore-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - AWS_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
+      - BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
+      # .env에서 로드
+      - BEDROCK_KB_ID
+      - GATEWAY_MCP_URL
+      - HELPDESK_API_URL
+      # AWS 자격증명 (로컬 테스트 시)
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  default:
+    name: agent-network

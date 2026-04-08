@@ -1,0 +1,31 @@
+# LangGraph & LangChain
+langgraph>=0.2.0
+langchain>=0.2.0
+langchain-aws>=0.1.0
+langchain-core>=0.2.0
+
+# AWS
+boto3>=1.34.0
+botocore>=1.34.0
+
+# MCP
+langchain-mcp-adapters>=0.2.0
+mcp>=1.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+requests>=2.31.0
+
+# Observability (Datadog)
+ddtrace>=2.0.0
+
+# API Framework
+fastapi>=0.109.0
+uvicorn>=0.27.0
+sse-starlette>=2.0.0
+chainlit>=1.0.0
+
+# Optional: 개발용
+ipython>=8.20.0

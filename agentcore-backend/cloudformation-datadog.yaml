@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Datadog LLM Observability 연동 - ECS Task Definition 업데이트'
+
+Parameters:
+  InfraStackName:
+    Type: String
+    Default: 'agentcore-infra-stack'
+    Description: infra 스택 이름 (Export 참조용)
+
+  ContainerImage:
+    Type: String
+    Description: ECR image URI (infra 스택과 동일)
+
+  BedrockModelId:
+    Type: String
+    Default: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+    Description: Bedrock model ID
+
+  GatewayMcpUrl:
+    Type: String
+    Default: ''
+    Description: AgentCore Gateway MCP URL
+
+  HelpdeskApiUrl:
+    Type: String
+    Default: ''
+    Description: Helpdesk API URL
+
+  DatadogApiKey:
+    Type: String
+    NoEcho: true
+    Description: Datadog API Key
+
+  DatadogSite:
+    Type: String
+    Default: 'datadoghq.com'
+    Description: Datadog site (datadoghq.com, ap1.datadoghq.com, etc.)
+
+  DatadogMlApp:
+    Type: String
+    Default: 'agentcore-backend'
+    Description: DD_LLMOBS_ML_APP (Datadog LLM Observability 앱 이름)
+
+Resources:
+  # Datadog 환경변수가 추가된 새 Task Definition
+  # infra 스택의 ECS Service를 이 Task Definition으로 업데이트
+  DatadogTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: agentcore-backend-datadog
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub '${InfraStackName}-ECSTaskExecutionRoleArn'
+      TaskRoleArn:
+        Fn::ImportValue: !Sub '${InfraStackName}-ECSTaskRoleArn'
+      ContainerDefinitions:
+        - Name: agent-backend
+          Image: !Ref ContainerImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: PYTHONUNBUFFERED
+              Value: '1'
+            - Name: AWS_REGION
+              Value: us-east-1
+            - Name: AWS_DEFAULT_REGION
+              Value: us-east-1
+            - Name: BEDROCK_MODEL_ID
+              Value: !Ref BedrockModelId
+            - Name: BEDROCK_KB_ID
+              Value:
+                Fn::ImportValue: !Sub '${InfraStackName}-KnowledgeBaseId'
+            - Name: GATEWAY_MCP_URL
+              Value: !Ref GatewayMcpUrl
+            - Name: HELPDESK_API_URL
+              Value: !Ref HelpdeskApiUrl
+            # ===== Datadog LLM Observability =====
+            - Name: DD_API_KEY
+              Value: !Ref DatadogApiKey
+            - Name: DD_SITE
+              Value: !Ref DatadogSite
+            - Name: DD_SERVICE
+              Value: agentcore-backend
+            - Name: DD_ENV
+              Value: workshop
+            - Name: DD_TRACE_ENABLED
+              Value: 'true'
+            - Name: DD_LOGS_INJECTION
+              Value: 'true'
+            # LLM Observability (Agentless - Datadog Agent 없이 직접 전송)
+            - Name: DD_LLMOBS_ENABLED
+              Value: '1'
+            - Name: DD_LLMOBS_ML_APP
+              Value: !Ref DatadogMlApp
+            - Name: DD_LLMOBS_AGENTLESS_ENABLED
+              Value: '1'
+            # 자동 계측 (langchain, botocore/bedrock)
+            - Name: DD_PATCH_MODULES
+              Value: 'langchain:true,botocore:true'
+            # 워크샵 시나리오용
+            - Name: WORKSHOP_SCENARIO
+              Value: 'normal'
+            - Name: BEDROCK_MAX_TOKENS
+              Value: '4096'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group:
+                Fn::ImportValue: !Sub '${InfraStackName}-LogGroup'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:8000/ || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+
+Outputs:
+  DatadogTaskDefinitionArn:
+    Description: Datadog 연동 Task Definition ARN
+    Value: !Ref DatadogTaskDefinition
+
+  NextSteps:
+    Description: 다음 단계
+    Value: !Sub >-
+      ECS Service를 새 Task Definition으로 업데이트하세요:
+      aws ecs update-service
+      --cluster agent-backend-cluster
+      --service agent-backend-service
+      --task-definition agentcore-backend-datadog
+      --force-new-deployment

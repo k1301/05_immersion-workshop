@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "../enterprise-agent-backend"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}
