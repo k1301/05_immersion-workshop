@@ -29,10 +29,14 @@ TEST_CASES = [
     {"question": "경비 처리 절차를 알려주세요", "expect": "success"},
     {"question": "신입 직원 온보딩 첫날 일정이 어떻게 되나요?", "expect": "success"},
 
-    # 에러 유발 질문 (보안 키워드 → 잘못된 KB ID)
-    {"question": "IT 보안 정책 알려줘", "expect": "error"},
-    {"question": "VPN 접속 방법을 알려주세요", "expect": "error"},
-    {"question": "비밀번호 변경은 어떻게 하나요?", "expect": "error"},
+    # 시나리오 1: 토큰 에러 (키워드: 요약, 정리, 상세히 등)
+    {"question": "휴가 정책을 상세히 요약 정리해줘", "expect": "token_error"},
+    {"question": "경비 처리 절차를 자세히 모두 알려줘", "expect": "token_error"},
+
+    # 시나리오 2: Failure to Answer (보안 키워드)
+    {"question": "IT 보안 정책 알려줘", "expect": "kb_error"},
+    {"question": "VPN 접속 방법을 알려주세요", "expect": "kb_error"},
+    {"question": "비밀번호 변경은 어떻게 하나요?", "expect": "kb_error"},
 
     # 일반 대화 (tool 호출 없음)
     {"question": "안녕하세요, 간단히 자기소개 해주세요", "expect": "success"},

@@ -69,20 +69,19 @@ def search_kb(query: str) -> str:
             logger.warning("KB ID 미설정", extra={"tool_name": "search_kb", "status": "error", "error_type": "config_missing"})
             return "[설정 오류] Knowledge Base ID가 설정되지 않았습니다."
 
-        # 워크샵 시나리오: failure_to_answer — 보안 관련 질문만 잘못된 KB ID로 검색
+        # 오류 시나리오 (항상 활성): 보안 관련 질문은 잘못된 KB ID로 검색
         # "보안", "VPN", "비밀번호" 등 보안 키워드가 포함된 query만 에러 발생
         # Datadog에서 "특정 질문만 실패하는 원인"을 추적하는 시나리오
-        if settings.workshop_scenario == "failure_to_answer":
-            security_keywords = ["보안", "security", "비밀번호", "password", "vpn", "mfa", "인증", "암호화", "피싱"]
-            if any(kw in query.lower() for kw in security_keywords):
-                logger.warning(f"워크샵 시나리오: 보안 키워드 감지 → 잘못된 KB ID 사용", extra={"tool_name": "search_kb", "status": "scenario_active"})
-                from langchain_aws import AmazonKnowledgeBasesRetriever
-                retriever = AmazonKnowledgeBasesRetriever(
-                    knowledge_base_id="INVALID_KB_ID_WORKSHOP",
-                    retrieval_config={"vectorSearchConfiguration": {"numberOfResults": 5}}
-                )
-                docs = retriever.invoke(query)
-                return "\n\n".join([doc.page_content for doc in docs]) if docs else "관련 문서를 찾지 못했습니다."
+        security_keywords = ["보안", "security", "비밀번호", "password", "vpn", "mfa", "인증", "암호화", "피싱"]
+        if any(kw in query.lower() for kw in security_keywords):
+            logger.warning(f"보안 키워드 감지 → 잘못된 KB ID 사용", extra={"tool_name": "search_kb", "status": "scenario_active"})
+            from langchain_aws import AmazonKnowledgeBasesRetriever
+            retriever = AmazonKnowledgeBasesRetriever(
+                knowledge_base_id="INVALID_KB_ID_WORKSHOP",
+                retrieval_config={"vectorSearchConfiguration": {"numberOfResults": 5}}
+            )
+            docs = retriever.invoke(query)
+            return "\n\n".join([doc.page_content for doc in docs]) if docs else "관련 문서를 찾지 못했습니다."
 
         from langchain_aws import AmazonKnowledgeBasesRetriever
 
@@ -341,9 +340,17 @@ def agent_node(state: AgentState) -> AgentState:
     start = time.time()
     llm = get_llm(tools)
 
-    # 워크샵 시나리오: token_error — max_tokens를 극단적으로 낮춰서 에러 유발
-    if settings.workshop_scenario == "token_error":
-        logger.warning("워크샵 시나리오: token_error 활성화 (max_tokens=10)", extra={"node": "agent", "model_id": settings.bedrock_model_id})
+    # 오류 시나리오 (항상 활성): 특정 키워드 질문은 max_tokens=10으로 토큰 에러 유발
+    # Datadog에서 "토큰 한도 초과로 응답이 잘리는 원인"을 추적하는 시나리오
+    token_error_keywords = ["요약", "정리", "상세히", "자세히", "전체", "모두", "알려줘"]
+    last_user_msg = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_user_msg = msg.content.lower()
+            break
+
+    if any(kw in last_user_msg for kw in token_error_keywords):
+        logger.warning("토큰 에러 시나리오 활성화 (max_tokens=10)", extra={"node": "agent", "model_id": settings.bedrock_model_id})
         llm = ChatBedrock(
             model_id=settings.bedrock_model_id,
             region_name=settings.aws_region,
