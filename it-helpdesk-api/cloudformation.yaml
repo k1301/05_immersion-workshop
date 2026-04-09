@@ -105,7 +105,6 @@ Resources:
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: helpdesk-api-execution-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -131,7 +130,6 @@ Resources:
   ECSTaskRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: helpdesk-api-task-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

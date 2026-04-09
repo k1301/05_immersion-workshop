@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'AgentCore Backend - AWS 인프라 + ECS + KB + S3 (Datadog 없음)'
+Description: 'AgentCore Backend - AWS Infra + ECS + KB + S3 (No Datadog)'
 
 Parameters:
   VpcId:
@@ -64,11 +64,28 @@ Resources:
         - Key: Name
           Value: agentcore-kb-docs
 
+  # ==================== S3 Vector Bucket & Index ====================
+  KBVectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    Properties:
+      VectorBucketName: !Sub 'agentcore-kb-${AWS::AccountId}'
+      Tags:
+        - Key: Name
+          Value: agentcore-kb-vectors
+
+  KBVectorIndex:
+    Type: AWS::S3Vectors::Index
+    Properties:
+      VectorBucketArn: !GetAtt KBVectorBucket.VectorBucketArn
+      IndexName: agentcore-vector-index
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+
   # ==================== Bedrock Knowledge Base ====================
   BedrockKBRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: agentcore-kb-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -89,6 +106,16 @@ Resources:
                 Resource:
                   - !GetAtt KBDocsBucket.Arn
                   - !Sub '${KBDocsBucket.Arn}/*'
+        - PolicyName: S3VectorsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3vectors:*
+                Resource:
+                  - !GetAtt KBVectorBucket.VectorBucketArn
+                  - !Sub '${KBVectorBucket.VectorBucketArn}/*'
         - PolicyName: BedrockEmbedding
           PolicyDocument:
             Version: '2012-10-17'
@@ -101,7 +128,9 @@ Resources:
 
   KnowledgeBase:
     Type: AWS::Bedrock::KnowledgeBase
-    DependsOn: BedrockKBRole
+    DependsOn:
+      - BedrockKBRole
+      - KBVectorIndex
     Properties:
       Name: agentcore-kb
       Description: AgentCore Knowledge Base (S3 Vectors)
@@ -113,7 +142,7 @@ Resources:
       StorageConfiguration:
         Type: S3_VECTORS
         S3VectorsConfiguration:
-          VectorBucketArn: !GetAtt KBDocsBucket.Arn
+          VectorBucketArn: !GetAtt KBVectorBucket.VectorBucketArn
           IndexName: agentcore-vector-index
 
   KBDataSource:
@@ -205,7 +234,6 @@ Resources:
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: agent-backend-execution-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -231,7 +259,6 @@ Resources:
   ECSTaskRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: agent-backend-task-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

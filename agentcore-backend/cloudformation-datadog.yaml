@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Datadog LLM Observability 연동 - ECS Task Definition 업데이트'
+Description: 'Datadog LLM Observability - ECS Task Definition Update'
 
 Parameters:
   InfraStackName:
