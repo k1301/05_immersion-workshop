@@ -121,35 +121,32 @@ cd agentcore-backend
 
 ## Part 4. Troubleshooting 시나리오
 
+> 오류 시나리오는 에이전트에 내장되어 있어 별도 환경변수 변경이 필요 없습니다.
+> 질문 내용에 따라 자동으로 정상/오류가 분기됩니다.
+
 ### 시나리오 1: 토큰 에러 진단 (15분)
 
 **에러 재현:**
-ECS 콘솔 → Task Definition → 새 리비전 생성 → 환경변수 변경:
-```
-WORKSHOP_SCENARIO = token_error
-```
-서비스 업데이트 → 새 Task Definition 선택 → 배포
+"요약", "정리", "상세히", "자세히" 등의 키워드가 포함된 질문을 하면 자동으로 토큰 에러가 발생합니다.
 
 **테스트:**
-Chainlit에서 "연차 휴가는 어떻게 신청하나요?" → 응답이 잘리거나 에러 발생
+Chainlit에서:
+```
+"휴가 정책을 상세히 요약 정리해줘"     → 에러 ❌ (토큰 초과)
+"연차 휴가는 며칠까지 쓸 수 있나요?"   → 정상 ✅
+```
 
 **Datadog에서 확인:**
 - Traces → 에러 트레이스 클릭
 - LLM span에서 `stop_reason: max_tokens` 확인
-- 출력이 불완전한 JSON으로 끝남
-
-**해결:**
-환경변수를 `WORKSHOP_SCENARIO = normal`로 변경 → 서비스 재배포
+- 정상 트레이스와 비교하여 max_tokens 값 차이 확인
 
 ---
 
 ### 시나리오 2: Failure to Answer 진단 (15분)
 
 **에러 재현:**
-환경변수 변경:
-```
-WORKSHOP_SCENARIO = failure_to_answer
-```
+보안 관련 키워드(보안, VPN, 비밀번호 등)가 포함된 질문을 하면 자동으로 잘못된 KB ID로 검색합니다.
 
 **테스트:**
 
@@ -164,9 +161,6 @@ WORKSHOP_SCENARIO = failure_to_answer
 - 에러 트레이스 vs 정상 트레이스 비교
 - search_kb span에서 `ResourceNotFoundException` 확인
 - 보안 키워드 질문에서만 잘못된 KB ID 사용하는 패턴 발견
-
-**해결:**
-환경변수를 `WORKSHOP_SCENARIO = normal`로 변경 → 서비스 재배포
 
 ---
 
