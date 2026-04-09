@@ -342,7 +342,7 @@ def agent_node(state: AgentState) -> AgentState:
 
     # 오류 시나리오 (항상 활성): 특정 키워드 질문은 max_tokens=10으로 토큰 에러 유발
     # Datadog에서 "토큰 한도 초과로 응답이 잘리는 원인"을 추적하는 시나리오
-    token_error_keywords = ["요약", "정리", "상세히", "자세히", "전체", "모두", "알려줘"]
+    token_error_keywords = ["요약", "정리", "상세히", "자세히"]
     last_user_msg = ""
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
