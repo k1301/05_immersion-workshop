@@ -72,7 +72,9 @@ if ! aws s3 ls "s3://${TEMPLATE_BUCKET}" 2>/dev/null; then
     if [ "$REGION" == "us-east-1" ]; then
         aws s3 mb "s3://${TEMPLATE_BUCKET}" --region "$REGION"
     else
-        aws s3 mb "s3://${TEMPLATE_BUCKET}" --region "$REGION" \
+        aws s3api create-bucket \
+            --bucket "${TEMPLATE_BUCKET}" \
+            --region "$REGION" \
             --create-bucket-configuration LocationConstraint="$REGION"
     fi
 fi
