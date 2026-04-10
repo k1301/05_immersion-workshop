@@ -38,8 +38,8 @@ echo -e "${YELLOW}[2/7] 파라미터 설정${NC}"
 read -p "환경 이름 [agentcore]: " ENV_NAME
 ENV_NAME=${ENV_NAME:-agentcore}
 
-read -p "Bedrock Model ID [us.anthropic.claude-sonnet-4-5-20250929-v1:0]: " MODEL_ID
-MODEL_ID=${MODEL_ID:-"us.anthropic.claude-sonnet-4-5-20250929-v1:0"}
+read -p "Bedrock Model ID [리전에 맞게 자동 설정, Enter 건너뛰기]: " MODEL_ID
+MODEL_ID=${MODEL_ID:-""}
 
 read -p "AgentCore Gateway MCP URL [선택, Enter 건너뛰기]: " GATEWAY_URL
 GATEWAY_URL=${GATEWAY_URL:-""}

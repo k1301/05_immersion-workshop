@@ -94,7 +94,7 @@ class Settings(BaseSettings):
 # 전역 설정 인스턴스
 settings = Settings()
 
-# bedrock_model_id가 비어있으면 리전 기반 기본값 설정
+# bedrock_model_id가 비어있거나 미설정이면 리전 기반 기본값 설정
 if not settings.bedrock_model_id:
     settings.bedrock_model_id = _default_model_id(settings.aws_region)
 
