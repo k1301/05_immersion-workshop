@@ -396,9 +396,9 @@ Resources:
             - Name: PYTHONUNBUFFERED
               Value: '1'
             - Name: AWS_REGION
-              Value: us-east-1
+              Value: !Ref 'AWS::Region'
             - Name: AWS_DEFAULT_REGION
-              Value: us-east-1
+              Value: !Ref 'AWS::Region'
             - Name: BEDROCK_MODEL_ID
               Value: !Ref BedrockModelId
             - Name: BEDROCK_KB_ID
