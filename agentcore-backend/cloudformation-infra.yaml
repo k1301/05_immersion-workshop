@@ -47,8 +47,8 @@ Resources:
   # ==================== S3 Bucket (KB 문서용) ====================
   KBDocsBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub 'agentcore-kb-docs-${AWS::AccountId}'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
