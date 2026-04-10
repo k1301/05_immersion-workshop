@@ -168,7 +168,6 @@ Resources:
   ECRRepository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: agentcore-backend
       ImageScanningConfiguration:
         ScanOnPush: true
       LifecyclePolicy:

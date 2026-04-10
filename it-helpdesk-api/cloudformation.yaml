@@ -34,7 +34,6 @@ Resources:
   ECRRepository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: it-helpdesk-api
       ImageScanningConfiguration:
         ScanOnPush: true
       LifecyclePolicy:
