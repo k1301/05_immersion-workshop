@@ -36,9 +36,14 @@ def _build_model_map(prefix: str) -> Dict[str, str]:
 
 
 def _default_model_id(region: str) -> str:
-    """리전에 맞는 기본 모델 ID 반환"""
+    """리전에 맞는 기본 모델 ID 반환 (리전별 가용 모델 고려)"""
     prefix = _region_prefix(region)
-    return f"{prefix}.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    # APAC/EU는 최신 모델 지원이 늦을 수 있으므로 안전한 기본값 사용
+    if prefix == "us":
+        return f"{prefix}.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    else:
+        # Sonnet 4는 APAC/EU에서 폭넓게 지원
+        return f"{prefix}.anthropic.claude-sonnet-4-20250514-v1:0"
 
 
 class Settings(BaseSettings):
