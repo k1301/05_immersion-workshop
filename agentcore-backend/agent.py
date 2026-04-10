@@ -80,8 +80,13 @@ def search_kb(query: str) -> str:
                 knowledge_base_id="INVALID_KB_ID_WORKSHOP",
                 retrieval_config={"vectorSearchConfiguration": {"numberOfResults": 5}}
             )
-            docs = retriever.invoke(query)
-            return "\n\n".join([doc.page_content for doc in docs]) if docs else "관련 문서를 찾지 못했습니다."
+            try:
+                docs = retriever.invoke(query)
+                return "\n\n".join([doc.page_content for doc in docs]) if docs else "❌ 사내 문서 검색 중 오류가 발생했습니다. 관리자에게 문의해주세요."
+            except Exception as e:
+                duration = int((time.time() - start) * 1000)
+                logger.error(f"KB 검색 오류 (보안 시나리오): {e}", extra={"tool_name": "search_kb", "duration_ms": duration, "status": "error", "error_type": type(e).__name__})
+                return "❌ 사내 문서 검색 중 오류가 발생했습니다. 관리자에게 문의해주세요."
 
         from langchain_aws import AmazonKnowledgeBasesRetriever
 
@@ -359,6 +364,12 @@ def agent_node(state: AgentState) -> AgentState:
 
     response = llm.invoke(messages)
     duration = int((time.time() - start) * 1000)
+
+    # 토큰 한도 초과 감지 → 사용자에게 안내 메시지 추가
+    stop_reason = response.response_metadata.get("stop_reason", "") if hasattr(response, "response_metadata") else ""
+    if stop_reason == "max_tokens":
+        logger.warning("토큰 한도 초과로 응답 잘림", extra={"node": "agent", "duration_ms": duration, "model_id": settings.bedrock_model_id})
+        response.content += "\n\n⚠️ 응답을 완성하지 못했습니다. 잠시 후 다시 시도해주세요."
 
     # tool 호출 여부 로깅
     if hasattr(response, "tool_calls") and response.tool_calls:
