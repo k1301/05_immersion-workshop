@@ -55,21 +55,10 @@ async def on_chat_start():
 
     await cl.Message(
         content=f"""
-👋 **사내 업무 에이전트에 오신 것을 환영합니다!**
+👋 **사내 업무 에이전트**
 
-이 에이전트는 ReAct 패턴을 사용하여 스스로 판단하고 도구를 선택합니다:
-
-🔍 **search_kb**: 사내 업무 가이드 검색 (연차, 경비, IT 보안 등)
-🎫 **create_ticket**: 헬프데스크 티켓 자동 생성 (담당자 지원 필요 시)
-🌐 **google_search**: 외부 정보 검색 (일반 질문)
-
-**현재 모델**: {model_display}
-**리전**: {settings.aws_region}
-
-💡 **사용 예시:**
-- "연차 휴가는 어떻게 신청하나요?" → KB 검색
-- "노트북이 고장났어요" → 티켓 생성
-- "파이썬 최신 버전은?" → 구글 검색
+**Model**: {model_display}
+**Region**: {settings.aws_region}
 
 무엇을 도와드릴까요?
         """
