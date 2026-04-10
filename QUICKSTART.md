@@ -62,7 +62,10 @@ curl https://<Helpdesk-CloudFront-URL>/tickets
 
 1. AWS 콘솔 → Bedrock → AgentCore → Gateway → 생성
 2. 이름: `helpdesk-gateway`
-3. Semantic Search: 비활성화
+3. 인바운드 인증: **IAM (SigV4)** 선택 (기본값이 JWT이므로 반드시 변경)
+4. Semantic Search: 비활성화
+
+> ⚠️ 인바운드 인증을 JWT(기본값)로 두면 에이전트가 SigV4로 인증하기 때문에 연결이 실패합니다.
 
 ### 2-2. 타겟 추가 (OpenAPI 스펙)
 
@@ -70,7 +73,7 @@ curl https://<Helpdesk-CloudFront-URL>/tickets
 2. 타겟 유형: REST API (OpenAPI 스키마)
 3. OpenAPI 스키마: `it-helpdesk-api/openapi.json` 내용 붙여넣기
    - 서버 URL을 Helpdesk CloudFront URL(https://)로 변경
-4. 인증: No authorization (또는 API Key 설정)
+4. 인증: API Key 설정
 
 등록 후 5개 MCP Tool이 자동 생성됩니다:
 - createTicket, getTickets, getTicket, updateTicket, getStatistics
