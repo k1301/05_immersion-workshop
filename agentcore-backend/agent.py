@@ -169,7 +169,7 @@ async def _call_gateway_tool(tool_name: str, arguments: dict) -> str:
         secret_key=creds.secret_key,
         token=creds.token if creds.token else None,
         service="bedrock-agentcore",
-        region="ap-northeast-2",
+        region=settings.aws_region,
     )
 
     try:
@@ -214,7 +214,7 @@ async def load_gateway_tools():
             secret_key=creds.secret_key,
             token=creds.token if creds.token else None,
             service="bedrock-agentcore",
-            region="ap-northeast-2",
+            region=settings.aws_region,
         )
 
         # MCP 세션으로 tool 목록만 가져오기
