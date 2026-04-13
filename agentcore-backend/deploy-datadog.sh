@@ -47,31 +47,55 @@ read -p "ML App 이름 [agentcore-backend]: " DD_ML_APP
 DD_ML_APP=${DD_ML_APP:-"agentcore-backend"}
 echo ""
 
-# 3. 에이전트 설정 (infra와 동일하게)
-echo -e "${YELLOW}3. 에이전트 설정${NC}"
-read -p "Container Image URI [$ECR_URI:latest]: " CONTAINER_IMAGE
-CONTAINER_IMAGE=${CONTAINER_IMAGE:-"$ECR_URI:latest"}
-read -p "Bedrock Model ID [리전에 맞게 자동 설정, Enter 건너뛰기]: " BEDROCK_MODEL_ID
-BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-""}
-read -p "AgentCore Gateway MCP URL [선택]: " GATEWAY_MCP_URL
-GATEWAY_MCP_URL=${GATEWAY_MCP_URL:-""}
-read -p "Helpdesk API URL [선택]: " HELPDESK_API_URL
-HELPDESK_API_URL=${HELPDESK_API_URL:-""}
+# 3. 기존 스택에서 에이전트 설정 자동 가져오기
+echo -e "${YELLOW}3. 기존 인프라에서 설정 가져오는 중...${NC}"
+CONTAINER_IMAGE="$ECR_URI:latest"
+
+# 마스터 스택 파라미터에서 기존 값 가져오기
+GATEWAY_MCP_URL=$(aws cloudformation describe-stacks --stack-name $MASTER_STACK \
+    --query "Stacks[0].Parameters[?ParameterKey=='GatewayMcpUrl'].ParameterValue" \
+    --output text --region $REGION 2>/dev/null || echo "")
+HELPDESK_API_URL=$(aws cloudformation describe-stacks --stack-name $MASTER_STACK \
+    --query "Stacks[0].Parameters[?ParameterKey=='HelpdeskApiUrl'].ParameterValue" \
+    --output text --region $REGION 2>/dev/null || echo "")
+BEDROCK_MODEL_ID=$(aws cloudformation describe-stacks --stack-name $MASTER_STACK \
+    --query "Stacks[0].Parameters[?ParameterKey=='BedrockModelId'].ParameterValue" \
+    --output text --region $REGION 2>/dev/null || echo "")
+
+# 자식 스택에서 IAM Role, KB ID, LogGroup 가져오기
+ECS_EXEC_ROLE=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" \
+    --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" \
+    --output text --region $REGION)
+ECS_TASK_ROLE=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" \
+    --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" \
+    --output text --region $REGION)
+KB_ID=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" \
+    --query "Stacks[0].Outputs[?OutputKey=='KnowledgeBaseId'].OutputValue" \
+    --output text --region $REGION)
+LOG_GROUP=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" \
+    --query "Stacks[0].Outputs[?OutputKey=='LogGroupName'].OutputValue" \
+    --output text --region $REGION)
+
+echo -e "${GREEN}✓ Container:    $CONTAINER_IMAGE${NC}"
+echo -e "${GREEN}✓ Model:        ${BEDROCK_MODEL_ID:-'(자동 설정)'}${NC}"
+echo -e "${GREEN}✓ Gateway URL:  ${GATEWAY_MCP_URL:-'(미설정)'}${NC}"
+echo -e "${GREEN}✓ Helpdesk URL: ${HELPDESK_API_URL:-'(미설정)'}${NC}"
+echo -e "${GREEN}✓ KB ID:        $KB_ID${NC}"
 echo ""
 
 # 파라미터
 PARAMETERS="ParameterKey=InfraStackName,ParameterValue=$AGENTCORE_STACK_ID"
 PARAMETERS="$PARAMETERS ParameterKey=ContainerImage,ParameterValue=$CONTAINER_IMAGE"
 PARAMETERS="$PARAMETERS ParameterKey=BedrockModelId,ParameterValue=$BEDROCK_MODEL_ID"
+PARAMETERS="$PARAMETERS ParameterKey=GatewayMcpUrl,ParameterValue=$GATEWAY_MCP_URL"
+PARAMETERS="$PARAMETERS ParameterKey=HelpdeskApiUrl,ParameterValue=$HELPDESK_API_URL"
+PARAMETERS="$PARAMETERS ParameterKey=ECSTaskExecutionRoleArn,ParameterValue=$ECS_EXEC_ROLE"
+PARAMETERS="$PARAMETERS ParameterKey=ECSTaskRoleArn,ParameterValue=$ECS_TASK_ROLE"
+PARAMETERS="$PARAMETERS ParameterKey=KnowledgeBaseId,ParameterValue=$KB_ID"
+PARAMETERS="$PARAMETERS ParameterKey=LogGroupName,ParameterValue=$LOG_GROUP"
 PARAMETERS="$PARAMETERS ParameterKey=DatadogApiKey,ParameterValue=$DD_API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=DatadogSite,ParameterValue=$DD_SITE"
 PARAMETERS="$PARAMETERS ParameterKey=DatadogMlApp,ParameterValue=$DD_ML_APP"
-if [ ! -z "$GATEWAY_MCP_URL" ]; then
-    PARAMETERS="$PARAMETERS ParameterKey=GatewayMcpUrl,ParameterValue=$GATEWAY_MCP_URL"
-fi
-if [ ! -z "$HELPDESK_API_URL" ]; then
-    PARAMETERS="$PARAMETERS ParameterKey=HelpdeskApiUrl,ParameterValue=$HELPDESK_API_URL"
-fi
 
 echo "=========================================="
 echo "Datadog 설정 확인"
