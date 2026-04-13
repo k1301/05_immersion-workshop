@@ -142,4 +142,4 @@ COMPARE_MODELS=sonnet-4.6,haiku-3.5,opus-4.6
 
 ## 🔗 관련 프로젝트
 
-- [IT Helpdesk API](https://github.com/k1301/simpleManageserver) - MCP 도구로 연결될 REST API
+- [IT Helpdesk API](../it-helpdesk-api) - MCP 도구로 연결될 REST API

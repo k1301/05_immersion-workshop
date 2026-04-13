@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     bedrock_kb_id: Optional[str] = None
 
     # IT Helpdesk API
-    helpdesk_api_url: str = "http://helpdesk-api-alb-799491602.ap-northeast-2.elb.amazonaws.com"
+    helpdesk_api_url: str = ""
 
     # AgentCore Gateway MCP URL
     gateway_mcp_url: str = ""

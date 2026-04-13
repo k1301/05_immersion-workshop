@@ -5,7 +5,7 @@ set -e
 
 REGION="us-east-1"
 KB_NAME="enterprise-agent-kb"
-S3_BUCKET="enterprise-agent-kb-docs-654251711600"
+S3_BUCKET="enterprise-agent-kb-docs-<YOUR_ACCOUNT_ID>"
 S3_PREFIX="kb_docs/"
 EMBEDDING_MODEL="amazon.titan-embed-text-v2:0"
 
