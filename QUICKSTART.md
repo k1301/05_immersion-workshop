@@ -140,9 +140,10 @@ Chainlit에서:
 ```
 
 **Datadog에서 확인:**
-- Traces → 에러 트레이스 클릭
-- LLM span에서 `stop_reason: max_tokens` 확인
-- 정상 트레이스와 비교하여 max_tokens 값 차이 확인
+- Traces → 토큰 에러 질문의 트레이스 클릭
+- `bedrock-runtime.command` span 선택 → `Output Tokens: 10` 확인 (정상 트레이스는 수백~수천)
+- 응답 내용이 잘려있는 것을 Output Message에서 확인
+- 정상 질문 트레이스와 Output Tokens 수를 비교하여 원인 파악
 
 ---
 
@@ -161,9 +162,11 @@ Chainlit에서:
 | "VPN 접속 방법 알려줘" | 에러 ❌ |
 
 **Datadog에서 확인:**
-- 에러 트레이스 vs 정상 트레이스 비교
-- search_kb span에서 `ResourceNotFoundException` 확인
-- 보안 키워드 질문에서만 잘못된 KB ID 사용하는 패턴 발견
+- 정상 질문 트레이스와 보안 질문 트레이스를 비교
+- `search_kb` span 클릭 → Output 내용 확인
+  - 정상: KB 문서 내용이 정상적으로 반환됨
+  - 에러: `❌ 사내 문서 검색 중 오류가 발생했습니다. 관리자에게 문의해주세요.` 메시지 반환
+- 보안 키워드 질문에서만 search_kb가 실패하는 패턴 발견
 
 ---
 
