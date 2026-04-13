@@ -12,20 +12,25 @@ echo "=========================================="
 echo ""
 
 REGION=$(aws configure get region || echo "us-east-1")
-INFRA_STACK="agentcore-infra-stack"
+MASTER_STACK="agentcore-master-stack"
 DD_STACK="agentcore-datadog-stack"
 
-# 1. infra 스택 확인
+# 1. 마스터 스택 확인
 echo -e "${YELLOW}1. 인프라 스택 확인 중...${NC}"
-INFRA_EXISTS=$(aws cloudformation describe-stacks --stack-name $INFRA_STACK 2>/dev/null || echo "")
-if [ -z "$INFRA_EXISTS" ]; then
-    echo -e "${RED}❌ 인프라 스택 '$INFRA_STACK'이(가) 없습니다. 먼저 deploy-infra.sh를 실행하세요.${NC}"
+MASTER_EXISTS=$(aws cloudformation describe-stacks --stack-name $MASTER_STACK 2>/dev/null || echo "")
+if [ -z "$MASTER_EXISTS" ]; then
+    echo -e "${RED}❌ 마스터 스택 '$MASTER_STACK'이(가) 없습니다. 먼저 deploy-master.sh를 실행하세요.${NC}"
     exit 1
 fi
-echo -e "${GREEN}✓ 인프라 스택 확인 완료${NC}"
+echo -e "${GREEN}✓ 마스터 스택 확인 완료${NC}"
 
-# infra 스택에서 값 가져오기
-ECR_URI=$(aws cloudformation describe-stacks --stack-name $INFRA_STACK --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" --output text)
+# AgentCore 자식 스택에서 값 가져오기
+AGENTCORE_STACK_ID=$(aws cloudformation list-stack-resources \
+    --stack-name $MASTER_STACK \
+    --query "StackResourceSummaries[?LogicalResourceId=='AgentcoreStack'].PhysicalResourceId" \
+    --output text --region $REGION)
+
+ECR_URI=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" --output text --region $REGION)
 echo -e "${GREEN}✓ ECR URI: $ECR_URI${NC}"
 echo ""
 
@@ -46,8 +51,8 @@ echo ""
 echo -e "${YELLOW}3. 에이전트 설정${NC}"
 read -p "Container Image URI [$ECR_URI:latest]: " CONTAINER_IMAGE
 CONTAINER_IMAGE=${CONTAINER_IMAGE:-"$ECR_URI:latest"}
-read -p "Bedrock Model ID [us.anthropic.claude-sonnet-4-5-20250929-v1:0]: " BEDROCK_MODEL_ID
-BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-"us.anthropic.claude-sonnet-4-5-20250929-v1:0"}
+read -p "Bedrock Model ID [리전에 맞게 자동 설정, Enter 건너뛰기]: " BEDROCK_MODEL_ID
+BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-""}
 read -p "AgentCore Gateway MCP URL [선택]: " GATEWAY_MCP_URL
 GATEWAY_MCP_URL=${GATEWAY_MCP_URL:-""}
 read -p "Helpdesk API URL [선택]: " HELPDESK_API_URL
@@ -55,7 +60,7 @@ HELPDESK_API_URL=${HELPDESK_API_URL:-""}
 echo ""
 
 # 파라미터
-PARAMETERS="ParameterKey=InfraStackName,ParameterValue=$INFRA_STACK"
+PARAMETERS="ParameterKey=InfraStackName,ParameterValue=$AGENTCORE_STACK_ID"
 PARAMETERS="$PARAMETERS ParameterKey=ContainerImage,ParameterValue=$CONTAINER_IMAGE"
 PARAMETERS="$PARAMETERS ParameterKey=BedrockModelId,ParameterValue=$BEDROCK_MODEL_ID"
 PARAMETERS="$PARAMETERS ParameterKey=DatadogApiKey,ParameterValue=$DD_API_KEY"
@@ -111,9 +116,20 @@ echo -e "${GREEN}✓ Datadog 스택 배포 완료${NC}"
 # 5. ECS Service 업데이트
 echo ""
 echo -e "${YELLOW}5. ECS Service를 Datadog Task Definition으로 업데이트 중...${NC}"
+
+ECS_CLUSTER=$(aws cloudformation describe-stacks \
+    --stack-name "$AGENTCORE_STACK_ID" \
+    --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" \
+    --output text --region $REGION)
+
+ECS_SERVICE=$(aws cloudformation describe-stacks \
+    --stack-name "$AGENTCORE_STACK_ID" \
+    --query "Stacks[0].Outputs[?OutputKey=='ECSServiceName'].OutputValue" \
+    --output text --region $REGION)
+
 aws ecs update-service \
-    --cluster agent-backend-cluster \
-    --service agent-backend-service \
+    --cluster "$ECS_CLUSTER" \
+    --service "$ECS_SERVICE" \
     --task-definition agentcore-backend-datadog \
     --force-new-deployment \
     --region $REGION > /dev/null
