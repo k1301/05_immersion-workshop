@@ -1,0 +1,1369 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Saltware Agentic AI Immersion Day
+Parameters:
+  CodeServerVersion:
+    Type: String
+    Description: Default code-server version to use
+    Default: "4.91.1"
+  AmiParameterStoreName:
+    Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+    Default: "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64"
+  HelpdeskContainerImage:
+    Type: String
+    Default: 'public.ecr.aws/j7s8j5m6/it-helpdesk-api:latest'
+    Description: Helpdesk API container image URI
+  AgentcoreContainerImage:
+    Type: String
+    Default: 'public.ecr.aws/j7s8j5m6/agentcore-backend:latest'
+    Description: AgentCore Backend container image URI
+  GatewayMcpUrl:
+    Type: String
+    Default: ''
+    Description: AgentCore Gateway MCP URL
+Mappings:
+  PrefixListID:
+    ap-northeast-2:
+      PrefixList: pl-22a6434b
+    us-east-1:
+      PrefixList: pl-3b927c52
+    us-west-2:
+      PrefixList: pl-82a045eb
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  
+  # PUBLIC SUBNET
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: 1
+  
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.0/24
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: 1
+  
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.2.0/24
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: 1
+  
+  PublicSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  
+  PublicSubnetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  
+  PublicSubnetRouteTableAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      SubnetId: !Ref PublicSubnet1
+  
+  PublicSubnetRouteTableAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      SubnetId: !Ref PublicSubnet2
+  
+  PublicSubnetRouteTableAssoc3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      SubnetId: !Ref PublicSubnet3
+  
+  # VS CODE SERVER
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for IDE
+      SecurityGroupIngress:
+        - Description: Allow HTTP from CloudFront
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: !FindInMap [PrefixListID, !Ref "AWS::Region", PrefixList]
+        - Description: nodejs
+          IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - Description: Allow all outbound traffic
+          IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+  
+  WorkshopIdeLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: !Join ["", [WorkshopIdeLambdaPolicy-, !Ref AWS::Region]]
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                  - ssm:SendCommand
+                  - ssm:GetCommandInvocation
+                Resource: "*"
+  
+  WorkshopIdeBootstrapInstanceLambda:
+    Type: Custom::WorkshopIdeBootstrapInstanceLambda
+    DependsOn:
+      - WorkshopIdeLambdaExecutionRole
+    Properties:
+      ServiceToken: !GetAtt WorkshopIdeBootstrapInstanceLambdaFunction.Arn
+      REGION:
+        Ref: AWS::Region
+      InstanceId:
+        Ref: WorkshopIdeInstance
+      SsmDocument:
+        Ref: WorkshopIdeSSMDocument
+  
+  WorkshopIdeBootstrapInstanceLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt WorkshopIdeLambdaExecutionRole.Arn
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: "900"
+      Code:
+        ZipFile: |
+          from __future__ import print_function
+
+          import json
+          import logging
+          import os
+          import time
+          import traceback
+
+          import boto3
+          import cfnresponse
+
+          logger = logging.getLogger(__name__)
+
+
+          def lambda_handler(event, context):
+              print(event.values())
+              print(f"context: {context}")
+              responseData = {}
+
+              status = cfnresponse.SUCCESS
+
+              if event["RequestType"] == "Delete":
+                  responseData = {"Success": "Custom Resource removed"}
+                  cfnresponse.send(
+                      event, context, status, responseData, "CustomResourcePhysicalID"
+                  )
+              else:
+                  try:
+                      ssm = boto3.client("ssm")
+                      instance_id = event["ResourceProperties"]["InstanceId"]
+                      ssm_document = event["ResourceProperties"]["SsmDocument"]
+                      print("Sending SSM command...")
+
+                      response = ssm.send_command(
+                          InstanceIds=[instance_id], DocumentName=ssm_document
+                      )
+
+                      command_id = response["Command"]["CommandId"]
+                      waiter = ssm.get_waiter("command_executed")
+
+                      waiter.wait(
+                          CommandId=command_id,
+                          InstanceId=instance_id,
+                          WaiterConfig={"Delay": 10, "MaxAttempts": 60},
+                      )
+
+                      responseData = {
+                          "Success": "Started bootstrapping for instance: " + instance_id
+                      }
+                      cfnresponse.send(
+                          event, context, status, responseData, "CustomResourcePhysicalID"
+                      )
+
+                  except Exception as e:
+                      status = cfnresponse.FAILED
+                      print(traceback.format_exc())
+                      responseData = {"Error": traceback.format_exc(e)}
+                  finally:
+                      cfnresponse.send(
+                          event, context, status, responseData, "CustomResourcePhysicalID"
+                      )
+  
+  WorkshopIdeSSMDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      DocumentFormat: YAML
+      Content:
+        schemaVersion: "2.2"
+        description: Bootstrap VS Code server Instance
+        mainSteps:
+          - action: aws:runShellScript
+            name: WorkshopIdebootstrap
+            inputs:
+              runCommand:
+                - !Sub |
+                  set -e
+
+                  dnf install -y git tar gzip vim nodejs npm make gcc g++ argon2 yq
+
+                  dnf copr enable -y @caddy/caddy epel-9-x86_64
+                  dnf install -y caddy
+                  systemctl enable --now caddy
+
+                  tee /etc/caddy/Caddyfile <<EOF
+                  http://${WorkshopIdeCloudFrontDistribution.DomainName} {
+                    reverse_proxy 127.0.0.1:8889
+                  }
+                  EOF
+
+                  systemctl restart caddy
+
+                  tee /etc/profile.d/custom_prompt.sh <<EOF
+                  #!/bin/sh
+
+                  export PROMPT_COMMAND='export PS1="\u:\w:$ "'
+                  EOF
+
+                  export AWS_REGION="${AWS::Region}"
+                  export AWS_DEFAULT_REGION="${AWS::Region}"
+
+                  cat <<"EOT" | sudo -E -H -u ec2-user bash
+                  set -e
+
+                  mkdir -p ~/environment
+
+                  curl -Ls -o /tmp/coder.rpm https://github.com/coder/code-server/releases/download/v${CodeServerVersion}/code-server-${CodeServerVersion}-amd64.rpm
+                  sudo rpm -U "/tmp/coder.rpm"
+
+                  sudo systemctl enable --now code-server@ec2-user
+
+                  mkdir -p ~/.config/code-server
+                  touch ~/.config/code-server/config.yaml
+                  tee ~/.config/code-server/config.yaml <<EOF
+                  cert: false
+                  auth: none
+                  bind-addr: 127.0.0.1:8889
+                  EOF
+
+                  mkdir -p ~/.local/share/code-server/User
+                  touch ~/.local/share/code-server/User/settings.json
+                  cat << EOF > ~/.local/share/code-server/User/settings.json
+                  {
+                    "extensions.autoUpdate": false,
+                    "extensions.autoCheckUpdates": false,
+                    "security.workspace.trust.enabled": false,
+                    "task.allowAutomaticTasks": "on",
+                    "telemetry.telemetryLevel": "off",
+                    "workbench.startupEditor": "none"
+                  }
+                  EOF
+
+                  mkdir -p ~/environment/.vscode
+                  cat << EOF > ~/environment/.vscode/settings.json
+                  {
+                    "files.exclude": {
+                      "**/.*": true
+                    }
+                  }
+                  EOF
+
+                  echo '{ "query": { "folder": "/home/ec2-user/environment" } }' > ~/.local/share/code-server/coder.json
+                  echo 'export DOMAIN_NAME=${AWS::AccountId}.fitcloud.click' >> ~/.bashrc
+                  echo 'export AWS_REGION=${AWS::Region}' >> ~/.bashrc
+                  echo 'export AWS_ACCOUNT_ID=${AWS::AccountId}' >> ~/.bashrc
+                  echo 'git config --global credential.helper store' >>~/.bashrc
+                  EOT
+
+                  systemctl restart code-server@ec2-user
+
+                  # uv
+                  curl -LsSf https://astral.sh/uv/install.sh | sh
+
+                  # python
+                  dnf install python3.12 -y
+                  ln -s /usr/bin/python3.12 /usr/bin/python
+                  sudo python -m ensurepip --upgrade
+                  ln -s /usr/local/bin/pip3 /usr/local/bin/pip
+                  python -m pip install --upgrade pip
+
+                  # timezone
+                  timedatectl set-timezone Asia/Seoul
+
+                  # docker
+                  dnf install docker -y
+                  usermod -a -G docker ec2-user
+                  systemctl enable --now docker
+
+                  # 코드 서버 재시작
+                  systemctl restart code-server@ec2-user
+
+  WorkshopIdeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Path: "/"
+  
+  WorkshopIdeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: WorkshopIdeRole
+  
+  WorkshopIdeInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiParameterStoreName
+      InstanceType: t3.medium
+      BlockDeviceMappings:
+        - Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+          DeviceName: /dev/xvda
+      SubnetId: !Ref PublicSubnet1
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      IamInstanceProfile: !Ref WorkshopIdeInstanceProfile
+
+  # CLOUDFRONT
+  WorkshopIdeCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        DefaultTTL: 86400
+        MaxTTL: 31536000
+        MinTTL: 1
+        Name: !Ref AWS::StackName
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: all
+          EnableAcceptEncodingGzip: False
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Accept-Charset
+              - Authorization
+              - Origin
+              - Accept
+              - Referer
+              - Host
+              - Accept-Language
+              - Accept-Encoding
+              - Accept-Datetime
+          QueryStringsConfig:
+            QueryStringBehavior: all
+  
+  WorkshopIdeCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: True
+        HttpVersion: http2
+        CacheBehaviors:
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: False
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            TargetOriginId: !Sub CloudFront-${AWS::StackName}
+            ViewerProtocolPolicy: allow-all
+            PathPattern: "/proxy/*"
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - PATCH
+            - POST
+            - DELETE
+          CachePolicyId: !Ref WorkshopIdeCachePolicy
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+          TargetOriginId: !Sub CloudFront-${AWS::StackName}
+          ViewerProtocolPolicy: allow-all
+        Origins:
+          - DomainName: !GetAtt WorkshopIdeInstance.PublicDnsName
+            Id: !Sub CloudFront-${AWS::StackName}
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+  # ROUTE 53
+  HostedZone: 
+    Type: "AWS::Route53::HostedZone"
+    Properties: 
+      Name: !Sub "${AWS::AccountId}.fitcloud.click"
+  
+  HostedZoneCleanerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt HostedZoneCleanerRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          
+          def lambda_handler(event, context):
+              route53 = boto3.client("route53")
+              hosted_zone_id = event["ResourceProperties"]["HostedZoneId"]
+
+              try:
+                  if event["RequestType"] == "Delete":
+                      paginator = route53.get_paginator("list_resource_record_sets")
+                      changes = []
+                      for page in paginator.paginate(HostedZoneId=hosted_zone_id):
+                          for record in page["ResourceRecordSets"]:
+                              if record["Type"] in ("NS", "SOA"):
+                                  continue
+                              changes.append({"Action": "DELETE", "ResourceRecordSet": record})
+
+                      if changes:
+                          for i in range(0, len(changes), 100):
+                              route53.change_resource_record_sets(
+                                  HostedZoneId=hosted_zone_id,
+                                  ChangeBatch={"Changes": changes[i:i+100]}
+                              )
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  print("Error:", str(e))
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {})
+  
+  HostedZoneCleanerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonRoute53FullAccess
+  
+  HostedZoneCleaner:
+    Type: Custom::HostedZoneCleaner
+    Properties:
+      ServiceToken: !GetAtt HostedZoneCleanerFunction.Arn
+      HostedZoneId: !Ref HostedZone
+  
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub "*.${AWS::AccountId}.fitcloud.click"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub "*.${AWS::AccountId}.fitcloud.click"
+          HostedZoneId: !Ref HostedZone
+  
+  NSRecordLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: !Join ["", ["NSRecordLambdaPolicy-", !Ref AWS::Region]]
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource: "*"
+  
+  NSRecord:
+    Type: Custom::NSRecord
+    Properties:
+      ServiceToken: !GetAtt NSRecordLambdaFunction.Arn
+      NameServer: !GetAtt HostedZone.NameServers
+  
+  NSRecordLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt NSRecordLambdaExecutionRole.Arn
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: "900"
+      Code:
+        ZipFile: |
+          from __future__ import print_function
+
+          import json
+          import logging
+          import os
+          import time
+          import traceback
+
+          import boto3
+          import cfnresponse
+
+          logger = logging.getLogger(__name__)
+
+
+          def lambda_handler(event, context):
+              print(event.values())
+              print(f"context: {context}")
+              responseData = {}
+
+              status = cfnresponse.SUCCESS
+
+              sts = boto3.client("sts")
+              identity = sts.get_caller_identity()
+              account = identity["Account"]
+
+              response = sts.assume_role(
+                  RoleArn="arn:aws:iam::491818659652:role/CrossRoute53Role",
+                  RoleSessionName=f"{account}-workshop"
+              )
+
+              credentials = response["Credentials"]
+
+              route53 = boto3.client(
+                  "route53",
+                  aws_access_key_id=credentials["AccessKeyId"],
+                  aws_secret_access_key=credentials["SecretAccessKey"],
+                  aws_session_token=credentials["SessionToken"],
+              )
+
+              domain_name = f"{account}.fitcloud.click"
+              name_servrs = event["ResourceProperties"]["NameServer"]
+              action = "UPSERT"
+
+              if event["RequestType"] == "Delete":
+                  action = "DELETE"
+                  
+              try:
+                  response = route53.change_resource_record_sets(
+                      HostedZoneId="Z046888418YGYNZYOIA0Y",
+                      ChangeBatch={
+                          "Changes": [
+                              {
+                                  "Action": action,
+                                  "ResourceRecordSet": {
+                                      "Name": domain_name,
+                                      "Type": "NS",
+                                      "TTL": 300,
+                                      "ResourceRecords": [{"Value": ns} for ns in name_servrs]
+                                  }
+                              }
+                          ]
+                      }
+                  )
+
+                  responseData = {
+                      "Success": response["ChangeInfo"]["Id"]
+                  }
+                  cfnresponse.send(
+                      event, context, status, responseData, "CustomResourcePhysicalID"
+                  )
+
+              except Exception as e:
+                  status = cfnresponse.FAILED
+                  print(traceback.format_exc())
+                  responseData = {"Error": traceback.format_exc(e)}
+              finally:
+                  cfnresponse.send(
+                      event, context, status, responseData, "CustomResourcePhysicalID"
+                  )    
+  
+  # ECS
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: workshop
+
+  ECSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECRPublicAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr-public:GetAuthorizationToken
+                  - ecr-public:BatchCheckLayerAvailability
+                  - ecr-public:GetDownloadUrlForLayer
+                  - ecr-public:BatchGetImage
+                  - sts:GetServiceBearerToken
+                Resource: '*'
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess
+      Policies:
+        - PolicyName: BedrockKBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:Retrieve
+                  - bedrock:RetrieveAndGenerate
+                Resource: '*'
+        - PolicyName: S3KBDocsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt KBDocsBucket.Arn
+                  - !Sub '${KBDocsBucket.Arn}/*'
+  
+  # BEDROCK KB
+  KBDocsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  KBVectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    Properties:
+      VectorBucketName: !Sub 'agentcore-kb-${AWS::AccountId}'
+
+  KBVectorIndex:
+    Type: AWS::S3Vectors::Index
+    Properties:
+      VectorBucketArn: !GetAtt KBVectorBucket.VectorBucketArn
+      IndexName: agentcore-vector-index
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+
+  BedrockKBRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:PutObject
+                Resource:
+                  - !GetAtt KBDocsBucket.Arn
+                  - !Sub '${KBDocsBucket.Arn}/*'
+        - PolicyName: S3VectorsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3vectors:*
+                Resource:
+                  - !GetAtt KBVectorBucket.VectorBucketArn
+                  - !Sub '${KBVectorBucket.VectorBucketArn}/*'
+        - PolicyName: BedrockEmbedding
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource:
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+
+  KnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    DependsOn:
+      - BedrockKBRole
+      - KBVectorIndex
+    Properties:
+      Name: agentcore-kb
+      Description: AgentCore Knowledge Base (S3 Vectors)
+      RoleArn: !GetAtt BedrockKBRole.Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+      StorageConfiguration:
+        Type: S3_VECTORS
+        S3VectorsConfiguration:
+          VectorBucketArn: !GetAtt KBVectorBucket.VectorBucketArn
+          IndexName: agentcore-vector-index
+
+  KBDataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      KnowledgeBaseId: !Ref KnowledgeBase
+      Name: company-docs
+      Description: Company guideline documents (kb_docs/)
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn: !GetAtt KBDocsBucket.Arn
+          InclusionPrefixes:
+            - 'kb_docs/'
+      VectorIngestionConfiguration:
+        ChunkingConfiguration:
+          ChunkingStrategy: FIXED_SIZE
+          FixedSizeChunkingConfiguration:
+            MaxTokens: 300
+            OverlapPercentage: 20
+
+  KBSyncLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: KBSyncAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:DeleteObjectVersion
+                  - s3:ListBucket
+                  - s3:ListBucketVersions
+                Resource:
+                  - !GetAtt KBDocsBucket.Arn
+                  - !Sub '${KBDocsBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - bedrock-agent:StartIngestionJob
+                  - bedrock-agent:GetIngestionJob
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${KnowledgeBase}'
+              - Effect: Allow
+                Action:
+                  - bedrock-agent:ListDataSources
+                Resource: '*'
+
+  KBSyncLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 300
+      Role: !GetAtt KBSyncLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import json, urllib.request, boto3, time, os
+
+          def send_response(event, context, status, reason=''):
+              body = json.dumps({
+                  'Status': status,
+                  'Reason': reason or f'See CloudWatch Log Stream: {context.log_stream_name}',
+                  'PhysicalResourceId': context.log_stream_name,
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+              }).encode()
+              req = urllib.request.Request(event['ResponseURL'], data=body, method='PUT',
+                                          headers={'Content-Type': ''})
+              urllib.request.urlopen(req)
+
+          def download_github_dir(owner, repo, path, branch='main'):
+              url = f'https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}'
+              req = urllib.request.Request(url, headers={'Accept': 'application/vnd.github.v3+json'})
+              resp = json.loads(urllib.request.urlopen(req).read())
+              files = {}
+              for item in resp:
+                  if item['type'] == 'file':
+                      raw = urllib.request.urlopen(item['download_url']).read()
+                      files[item['name']] = raw
+              return files
+
+          def handler(event, context):
+              try:
+                  props = event['ResourceProperties']
+                  bucket = props['BucketName']
+
+                  if event['RequestType'] == 'Delete':
+                      s3 = boto3.client('s3')
+                      paginator = s3.get_paginator('list_object_versions')
+                      for page in paginator.paginate(Bucket=bucket):
+                          objects = []
+                          for v in page.get('Versions', []):
+                              objects.append({'Key': v['Key'], 'VersionId': v['VersionId']})
+                          for m in page.get('DeleteMarkers', []):
+                              objects.append({'Key': m['Key'], 'VersionId': m['VersionId']})
+                          if objects:
+                              s3.delete_objects(Bucket=bucket, Delete={'Objects': objects})
+                      return send_response(event, context, 'SUCCESS')
+
+                  kb_id = props['KnowledgeBaseId']
+                  repo_owner = props['RepoOwner']
+                  repo_name = props['RepoName']
+                  docs_path = props['DocsPath']
+
+                  files = download_github_dir(repo_owner, repo_name, docs_path)
+
+                  s3 = boto3.client('s3')
+                  for fname, content in files.items():
+                      s3.put_object(Bucket=bucket, Key=f'kb_docs/{fname}', Body=content)
+
+                  bedrock = boto3.client('bedrock-agent')
+                  ds_list = bedrock.list_data_sources(knowledgeBaseId=kb_id)
+                  ds_id = ds_list['dataSourceSummaries'][0]['dataSourceId']
+
+                  job = bedrock.start_ingestion_job(knowledgeBaseId=kb_id, dataSourceId=ds_id)
+                  job_id = job['ingestionJob']['ingestionJobId']
+
+                  for _ in range(60):
+                      time.sleep(5)
+                      status = bedrock.get_ingestion_job(
+                          knowledgeBaseId=kb_id, dataSourceId=ds_id, ingestionJobId=job_id
+                      )['ingestionJob']['status']
+                      if status == 'COMPLETE':
+                          return send_response(event, context, 'SUCCESS')
+                      if status == 'FAILED':
+                          return send_response(event, context, 'FAILED', f'Ingestion job failed: {job_id}')
+
+                  return send_response(event, context, 'FAILED', 'Ingestion job timed out')
+              except Exception as e:
+                  return send_response(event, context, 'FAILED', str(e))
+
+  KBSyncTrigger:
+    Type: Custom::KBSync
+    DependsOn:
+      - KBDataSource
+    Properties:
+      ServiceToken: !GetAtt KBSyncLambda.Arn
+      BucketName: !Ref KBDocsBucket
+      KnowledgeBaseId: !Ref KnowledgeBase
+      RepoOwner: k1301
+      RepoName: 05_immersion-workshop
+      DocsPath: kb_docs
+
+  # HELPDESK
+  GatewayApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: helpdesk-api-gateway-key
+      Description: API Key for AgentCore Gateway outbound auth to Helpdesk API
+      GenerateSecretString:
+        ExcludePunctuation: true
+        PasswordLength: 48
+
+  HelpdeskALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTPS/HTTP traffic to Helpdesk ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTP from internet
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS from internet
+
+  HelpdeskECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow traffic from Helpdesk ALB to ECS tasks
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref HelpdeskALBSecurityGroup
+          Description: Allow traffic from ALB
+
+  HelpdeskLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/it-helpdesk-api
+      RetentionInDays: 7
+
+  HelpdeskLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: helpdesk-api-alb
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      SecurityGroups: [!Ref HelpdeskALBSecurityGroup]
+      Type: application
+
+  HelpdeskTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: helpdesk-api-tg
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+
+  HelpdeskALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref HelpdeskLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+      Certificates:
+        - CertificateArn: !Ref Certificate
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref HelpdeskTargetGroup
+
+  HelpdeskALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref HelpdeskLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
+
+  HelpdeskTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: it-helpdesk-api
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt ECSExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: helpdesk-api
+          Image: !Ref HelpdeskContainerImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: PYTHONUNBUFFERED
+              Value: '1'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref HelpdeskLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:8000/ || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+
+  HelpdeskService:
+    Type: AWS::ECS::Service
+    DependsOn: HelpdeskALBListenerHTTPS
+    Properties:
+      ServiceName: helpdesk-api-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref HelpdeskTaskDef
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+          SecurityGroups:
+            - !Ref HelpdeskECSSecurityGroup
+      LoadBalancers:
+        - TargetGroupArn: !Ref HelpdeskTargetGroup
+          ContainerName: helpdesk-api
+          ContainerPort: 8000
+      HealthCheckGracePeriodSeconds: 60
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+
+  HelpdeskDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZone
+      Name: !Sub "helpdesk.${AWS::AccountId}.fitcloud.click"
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt HelpdeskLoadBalancer.CanonicalHostedZoneID
+        DNSName: !GetAtt HelpdeskLoadBalancer.DNSName
+
+  # AGENTCORE
+  AgentcoreALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTPS/HTTP traffic to Agentcore ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  AgentcoreECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow traffic from Agentcore ALB to ECS tasks
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref AgentcoreALBSecurityGroup
+
+  AgentcoreLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/agentcore-backend
+      RetentionInDays: 7
+
+  AgentcoreLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: agentcore-alb
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      SecurityGroups: [!Ref AgentcoreALBSecurityGroup]
+      Type: application
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '3600'
+
+  AgentcoreTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: agentcore-tg
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+        - Key: stickiness.enabled
+          Value: 'true'
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: '86400'
+
+  AgentcoreALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref AgentcoreLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+      Certificates:
+        - CertificateArn: !Ref Certificate
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AgentcoreTargetGroup
+
+  AgentcoreALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref AgentcoreLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
+
+  AgentcoreTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: agentcore-backend
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ECSExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: agent-backend
+          Image: !Ref AgentcoreContainerImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: PYTHONUNBUFFERED
+              Value: '1'
+            - Name: AWS_REGION
+              Value: !Ref 'AWS::Region'
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref 'AWS::Region'
+            - Name: BEDROCK_MODEL_ID
+              Value: ''
+            - Name: BEDROCK_KB_ID
+              Value: !GetAtt KnowledgeBase.KnowledgeBaseId
+            - Name: GATEWAY_MCP_URL
+              Value: !Ref GatewayMcpUrl
+            - Name: HELPDESK_API_URL
+              Value: ''
+            - Name: WORKSHOP_SCENARIO
+              Value: 'normal'
+            - Name: BEDROCK_MAX_TOKENS
+              Value: '4096'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AgentcoreLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:8000/ || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+
+  AgentcoreService:
+    Type: AWS::ECS::Service
+    DependsOn: AgentcoreALBListenerHTTPS
+    Properties:
+      ServiceName: agent-backend-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref AgentcoreTaskDef
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+          SecurityGroups:
+            - !Ref AgentcoreECSSecurityGroup
+      LoadBalancers:
+        - TargetGroupArn: !Ref AgentcoreTargetGroup
+          ContainerName: agent-backend
+          ContainerPort: 8000
+      HealthCheckGracePeriodSeconds: 120
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+
+  AgentcoreDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZone
+      Name: !Sub "agentcore.${AWS::AccountId}.fitcloud.click"
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt AgentcoreLoadBalancer.CanonicalHostedZoneID
+        DNSName: !GetAtt AgentcoreLoadBalancer.DNSName
+
+Outputs:
+  CodeServerURL:
+    Value: !Sub https://${WorkshopIdeCloudFrontDistribution.DomainName}
+  HelpdeskUrl:
+    Description: Helpdesk API URL
+    Value: !Sub https://${HelpdeskDNSRecord}
+  GatewayApiKeySecretArn:
+    Description: Secrets Manager ARN for AgentCore Gateway API Key
+    Value: !Ref GatewayApiKeySecret
+  GatewayApiKeySecretName:
+    Description: Secrets Manager Secret Name
+    Value: helpdesk-api-gateway-key
+  AgentcoreUrl:
+    Description: AgentCore Backend URL
+    Value: !Sub https://${AgentcoreDNSRecord}
+  KBDocsBucketName:
+    Description: S3 Bucket for KB documents
+    Value: !Ref KBDocsBucket
+  KnowledgeBaseId:
+    Description: Bedrock Knowledge Base ID
+    Value: !GetAtt KnowledgeBase.KnowledgeBaseId
+
