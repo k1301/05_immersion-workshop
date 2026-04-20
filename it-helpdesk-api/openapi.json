@@ -7,8 +7,8 @@
   },
   "servers": [
     {
-      "url": "https://d36er0nqdx2ehu.cloudfront.net",
-      "description": "Production (CloudFront → ALB → ECS)"
+      "url": "<HelpdeskUrl>",
+      "description": "Production (Route53 → CloudFront → ALB → ECS)"
     }
   ],
   "paths": {

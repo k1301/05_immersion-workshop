@@ -869,13 +869,10 @@ Resources:
                   - !Sub '${KBDocsBucket.Arn}/*'
               - Effect: Allow
                 Action:
-                  - bedrock-agent:StartIngestionJob
-                  - bedrock-agent:GetIngestionJob
+                  - bedrock:StartIngestionJob
+                  - bedrock:GetIngestionJob
+                  - bedrock:ListDataSources
                 Resource: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${KnowledgeBase}'
-              - Effect: Allow
-                Action:
-                  - bedrock-agent:ListDataSources
-                Resource: '*'
 
   KBSyncLambda:
     Type: AWS::Lambda::Function
@@ -1366,4 +1363,3 @@ Outputs:
   KnowledgeBaseId:
     Description: Bedrock Knowledge Base ID
     Value: !GetAtt KnowledgeBase.KnowledgeBaseId
-
