@@ -1,163 +1,202 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REGION="$(aws configure get region 2>/dev/null || true)"
+REGION="${REGION:-us-east-1}"
+WORKSHOP_STACK="${WORKSHOP_STACK:-agentcore-workshop-stack}"
+DD_STACK="${DD_STACK:-agentcore-datadog-stack}"
+DD_TASK_FAMILY="agentcore-backend-datadog"
+
 echo "=========================================="
 echo "Datadog LLM Observability 연동"
 echo "=========================================="
 echo ""
 
-REGION=$(aws configure get region || echo "us-east-1")
-MASTER_STACK="agentcore-master-stack"
-DD_STACK="agentcore-datadog-stack"
+get_stack_parameter() {
+  local stack_name="$1"
+  local key="$2"
+  aws cloudformation describe-stacks \
+    --stack-name "$stack_name" \
+    --query "Stacks[0].Parameters[?ParameterKey=='${key}'].ParameterValue | [0]" \
+    --output text \
+    --region "$REGION" 2>/dev/null || true
+}
 
-# 1. 마스터 스택 확인
-echo -e "${YELLOW}1. 인프라 스택 확인 중...${NC}"
-MASTER_EXISTS=$(aws cloudformation describe-stacks --stack-name $MASTER_STACK 2>/dev/null || echo "")
-if [ -z "$MASTER_EXISTS" ]; then
-    echo -e "${RED}❌ 마스터 스택 '$MASTER_STACK'이(가) 없습니다. 먼저 deploy-master.sh를 실행하세요.${NC}"
-    exit 1
+get_stack_output() {
+  local stack_name="$1"
+  local key="$2"
+  aws cloudformation describe-stacks \
+    --stack-name "$stack_name" \
+    --query "Stacks[0].Outputs[?OutputKey=='${key}'].OutputValue | [0]" \
+    --output text \
+    --region "$REGION" 2>/dev/null || true
+}
+
+get_resource_physical_id() {
+  local stack_name="$1"
+  local logical_id="$2"
+  aws cloudformation list-stack-resources \
+    --stack-name "$stack_name" \
+    --query "StackResourceSummaries[?LogicalResourceId=='${logical_id}'].PhysicalResourceId | [0]" \
+    --output text \
+    --region "$REGION" 2>/dev/null || true
+}
+
+normalize_text() {
+  local value="${1:-}"
+  if [ "$value" = "None" ] || [ "$value" = "null" ] || [ "$value" = "NoneType" ]; then
+    echo ""
+  else
+    echo "$value"
+  fi
+}
+
+echo -e "${YELLOW}1. 워크샵 스택 확인 중...${NC}"
+STACK_JSON="$(aws cloudformation describe-stacks --stack-name "$WORKSHOP_STACK" --region "$REGION" 2>/dev/null || true)"
+if [ -z "$STACK_JSON" ]; then
+  echo -e "${RED}❌ 워크샵 스택 '$WORKSHOP_STACK'이(가) 없습니다.${NC}"
+  echo "   WORKSHOP_STACK 환경변수를 설정하거나 agentcore-workshop-stack 을 먼저 배포하세요."
+  exit 1
 fi
-echo -e "${GREEN}✓ 마스터 스택 확인 완료${NC}"
-
-# AgentCore 자식 스택에서 값 가져오기
-AGENTCORE_STACK_ID=$(aws cloudformation list-stack-resources \
-    --stack-name $MASTER_STACK \
-    --query "StackResourceSummaries[?LogicalResourceId=='AgentcoreStack'].PhysicalResourceId" \
-    --output text --region $REGION)
-
-ECR_URI=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" --output text --region $REGION)
-echo -e "${GREEN}✓ ECR URI: $ECR_URI${NC}"
+echo -e "${GREEN}✓ 워크샵 스택 확인 완료: $WORKSHOP_STACK${NC}"
 echo ""
 
-# 2. Datadog 설정
 echo -e "${YELLOW}2. Datadog 설정${NC}"
-read -p "Datadog API Key (필수): " DD_API_KEY
+read -r -p "Datadog API Key (필수): " DD_API_KEY
 if [ -z "$DD_API_KEY" ]; then
-    echo -e "${RED}❌ Datadog API Key는 필수입니다.${NC}"
-    exit 1
+  echo -e "${RED}❌ Datadog API Key는 필수입니다.${NC}"
+  exit 1
 fi
-read -p "Datadog Site [datadoghq.com]: " DD_SITE
-DD_SITE=${DD_SITE:-"datadoghq.com"}
-read -p "ML App 이름 [agentcore-backend]: " DD_ML_APP
-DD_ML_APP=${DD_ML_APP:-"agentcore-backend"}
+read -r -p "Datadog Site [datadoghq.com]: " DD_SITE
+DD_SITE="${DD_SITE:-datadoghq.com}"
+read -r -p "ML App 이름 [agentcore-backend]: " DD_ML_APP
+DD_ML_APP="${DD_ML_APP:-agentcore-backend}"
 echo ""
 
-# 3. 기존 스택에서 에이전트 설정 자동 가져오기
-echo -e "${YELLOW}3. 기존 인프라에서 설정 가져오는 중...${NC}"
-CONTAINER_IMAGE="$ECR_URI:latest"
+echo -e "${YELLOW}3. 기존 워크샵 스택에서 설정 가져오는 중...${NC}"
 
-# 마스터 스택 파라미터에서 기존 값 가져오기
-GATEWAY_MCP_URL=$(aws cloudformation describe-stacks --stack-name $MASTER_STACK \
-    --query "Stacks[0].Parameters[?ParameterKey=='GatewayMcpUrl'].ParameterValue" \
-    --output text --region $REGION 2>/dev/null || echo "")
-HELPDESK_API_URL=$(aws cloudformation describe-stacks --stack-name $MASTER_STACK \
-    --query "Stacks[0].Parameters[?ParameterKey=='HelpdeskApiUrl'].ParameterValue" \
-    --output text --region $REGION 2>/dev/null || echo "")
-BEDROCK_MODEL_ID=$(aws cloudformation describe-stacks --stack-name $MASTER_STACK \
-    --query "Stacks[0].Parameters[?ParameterKey=='BedrockModelId'].ParameterValue" \
-    --output text --region $REGION 2>/dev/null || echo "")
+CONTAINER_IMAGE="$(normalize_text "$(get_stack_parameter "$WORKSHOP_STACK" "AgentcoreContainerImage")")"
+if [ -z "$CONTAINER_IMAGE" ]; then
+  CONTAINER_IMAGE="public.ecr.aws/j7s8j5m6/agentcore-backend:latest"
+fi
 
-# 자식 스택에서 IAM Role, KB ID, LogGroup 가져오기
-ECS_EXEC_ROLE=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" \
-    --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" \
-    --output text --region $REGION)
-ECS_TASK_ROLE=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" \
-    --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" \
-    --output text --region $REGION)
-KB_ID=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" \
-    --query "Stacks[0].Outputs[?OutputKey=='KnowledgeBaseId'].OutputValue" \
-    --output text --region $REGION)
-LOG_GROUP=$(aws cloudformation describe-stacks --stack-name "$AGENTCORE_STACK_ID" \
-    --query "Stacks[0].Outputs[?OutputKey=='LogGroupName'].OutputValue" \
-    --output text --region $REGION)
+GATEWAY_MCP_URL="$(normalize_text "$(get_stack_parameter "$WORKSHOP_STACK" "GatewayMcpUrl")")"
+HELPDESK_API_URL="$(normalize_text "$(get_stack_output "$WORKSHOP_STACK" "HelpdeskUrl")")"
+KB_ID="$(normalize_text "$(get_stack_output "$WORKSHOP_STACK" "KnowledgeBaseId")")"
+BEDROCK_MODEL_ID=""
+
+ECS_EXEC_ROLE_NAME="$(normalize_text "$(get_resource_physical_id "$WORKSHOP_STACK" "ECSExecutionRole")")"
+ECS_TASK_ROLE_NAME="$(normalize_text "$(get_resource_physical_id "$WORKSHOP_STACK" "ECSTaskRole")")"
+LOG_GROUP="$(normalize_text "$(get_resource_physical_id "$WORKSHOP_STACK" "AgentcoreLogGroup")")"
+ECS_CLUSTER="$(normalize_text "$(get_resource_physical_id "$WORKSHOP_STACK" "ECSCluster")")"
+ECS_SERVICE="$(normalize_text "$(get_resource_physical_id "$WORKSHOP_STACK" "AgentcoreService")")"
+
+if [ -z "$ECS_EXEC_ROLE_NAME" ] || [ -z "$ECS_TASK_ROLE_NAME" ] || [ -z "$KB_ID" ] || [ -z "$LOG_GROUP" ] || [ -z "$ECS_CLUSTER" ] || [ -z "$ECS_SERVICE" ]; then
+  echo -e "${RED}❌ 현재 스택에서 Datadog 연동에 필요한 리소스 값을 충분히 찾지 못했습니다.${NC}"
+  echo "   확인 항목:"
+  echo "   - ECSExecutionRole: ${ECS_EXEC_ROLE_NAME:-'(없음)'}"
+  echo "   - ECSTaskRole:      ${ECS_TASK_ROLE_NAME:-'(없음)'}"
+  echo "   - KnowledgeBaseId:  ${KB_ID:-'(없음)'}"
+  echo "   - AgentcoreLogGroup:${LOG_GROUP:-'(없음)'}"
+  echo "   - ECSCluster:       ${ECS_CLUSTER:-'(없음)'}"
+  echo "   - AgentcoreService: ${ECS_SERVICE:-'(없음)'}"
+  exit 1
+fi
+
+ECS_EXEC_ROLE="$(aws iam get-role --role-name "$ECS_EXEC_ROLE_NAME" --query 'Role.Arn' --output text --region "$REGION")"
+ECS_TASK_ROLE="$(aws iam get-role --role-name "$ECS_TASK_ROLE_NAME" --query 'Role.Arn' --output text --region "$REGION")"
 
 echo -e "${GREEN}✓ Container:    $CONTAINER_IMAGE${NC}"
 echo -e "${GREEN}✓ Model:        ${BEDROCK_MODEL_ID:-'(자동 설정)'}${NC}"
 echo -e "${GREEN}✓ Gateway URL:  ${GATEWAY_MCP_URL:-'(미설정)'}${NC}"
 echo -e "${GREEN}✓ Helpdesk URL: ${HELPDESK_API_URL:-'(미설정)'}${NC}"
 echo -e "${GREEN}✓ KB ID:        $KB_ID${NC}"
+echo -e "${GREEN}✓ ECS Cluster:  $ECS_CLUSTER${NC}"
+echo -e "${GREEN}✓ ECS Service:  $ECS_SERVICE${NC}"
 echo ""
 
-# 파라미터
-PARAMETERS="ParameterKey=InfraStackName,ParameterValue=$AGENTCORE_STACK_ID"
-PARAMETERS="$PARAMETERS ParameterKey=ContainerImage,ParameterValue=$CONTAINER_IMAGE"
-PARAMETERS="$PARAMETERS ParameterKey=BedrockModelId,ParameterValue=$BEDROCK_MODEL_ID"
-PARAMETERS="$PARAMETERS ParameterKey=GatewayMcpUrl,ParameterValue=$GATEWAY_MCP_URL"
-PARAMETERS="$PARAMETERS ParameterKey=HelpdeskApiUrl,ParameterValue=$HELPDESK_API_URL"
-PARAMETERS="$PARAMETERS ParameterKey=ECSTaskExecutionRoleArn,ParameterValue=$ECS_EXEC_ROLE"
-PARAMETERS="$PARAMETERS ParameterKey=ECSTaskRoleArn,ParameterValue=$ECS_TASK_ROLE"
-PARAMETERS="$PARAMETERS ParameterKey=KnowledgeBaseId,ParameterValue=$KB_ID"
-PARAMETERS="$PARAMETERS ParameterKey=LogGroupName,ParameterValue=$LOG_GROUP"
-PARAMETERS="$PARAMETERS ParameterKey=DatadogApiKey,ParameterValue=$DD_API_KEY"
-PARAMETERS="$PARAMETERS ParameterKey=DatadogSite,ParameterValue=$DD_SITE"
-PARAMETERS="$PARAMETERS ParameterKey=DatadogMlApp,ParameterValue=$DD_ML_APP"
+PARAMETERS=(
+  "ParameterKey=InfraStackName,ParameterValue=${WORKSHOP_STACK}"
+  "ParameterKey=ContainerImage,ParameterValue=${CONTAINER_IMAGE}"
+  "ParameterKey=BedrockModelId,ParameterValue=${BEDROCK_MODEL_ID}"
+  "ParameterKey=GatewayMcpUrl,ParameterValue=${GATEWAY_MCP_URL}"
+  "ParameterKey=HelpdeskApiUrl,ParameterValue=${HELPDESK_API_URL}"
+  "ParameterKey=ECSTaskExecutionRoleArn,ParameterValue=${ECS_EXEC_ROLE}"
+  "ParameterKey=ECSTaskRoleArn,ParameterValue=${ECS_TASK_ROLE}"
+  "ParameterKey=KnowledgeBaseId,ParameterValue=${KB_ID}"
+  "ParameterKey=LogGroupName,ParameterValue=${LOG_GROUP}"
+  "ParameterKey=DatadogApiKey,ParameterValue=${DD_API_KEY}"
+  "ParameterKey=DatadogSite,ParameterValue=${DD_SITE}"
+  "ParameterKey=DatadogMlApp,ParameterValue=${DD_ML_APP}"
+)
 
 echo "=========================================="
 echo "Datadog 설정 확인"
 echo "=========================================="
+echo "Region:        $REGION"
+echo "WorkshopStack: $WORKSHOP_STACK"
+echo "DD Stack:      $DD_STACK"
 echo "DD Site:       $DD_SITE"
 echo "DD ML App:     $DD_ML_APP"
 echo "Container:     $CONTAINER_IMAGE"
-echo "Model:         $BEDROCK_MODEL_ID"
+echo "Model:         ${BEDROCK_MODEL_ID:-'(자동 설정)'}"
 echo "=========================================="
 echo ""
 
-read -p "계속 진행하시겠습니까? (y/n) [y]: " CONFIRM
-CONFIRM=${CONFIRM:-y}
+read -r -p "계속 진행하시겠습니까? (y/n) [y]: " CONFIRM
+CONFIRM="${CONFIRM:-y}"
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    exit 0
+  exit 0
 fi
 
-# 4. Datadog 스택 배포
 echo ""
 echo -e "${YELLOW}4. Datadog 스택 배포 중...${NC}"
-
-DD_EXISTS=$(aws cloudformation describe-stacks --stack-name $DD_STACK 2>/dev/null || echo "")
+DD_EXISTS="$(aws cloudformation describe-stacks --stack-name "$DD_STACK" --region "$REGION" 2>/dev/null || true)"
 if [ -z "$DD_EXISTS" ]; then
-    aws cloudformation create-stack \
-        --stack-name $DD_STACK \
-        --template-body file://cloudformation-datadog.yaml \
-        --parameters $PARAMETERS \
-        --region $REGION
-    echo "대기 중..."
-    aws cloudformation wait stack-create-complete --stack-name $DD_STACK --region $REGION
+  aws cloudformation create-stack \
+    --stack-name "$DD_STACK" \
+    --template-body "file://${SCRIPT_DIR}/cloudformation-datadog.yaml" \
+    --parameters "${PARAMETERS[@]}" \
+    --region "$REGION"
+  echo "대기 중..."
+  aws cloudformation wait stack-create-complete --stack-name "$DD_STACK" --region "$REGION"
 else
-    aws cloudformation update-stack \
-        --stack-name $DD_STACK \
-        --template-body file://cloudformation-datadog.yaml \
-        --parameters $PARAMETERS \
-        --region $REGION
+  set +e
+  UPDATE_OUTPUT="$(aws cloudformation update-stack \
+    --stack-name "$DD_STACK" \
+    --template-body "file://${SCRIPT_DIR}/cloudformation-datadog.yaml" \
+    --parameters "${PARAMETERS[@]}" \
+    --region "$REGION" 2>&1)"
+  UPDATE_STATUS=$?
+  set -e
+  if [ $UPDATE_STATUS -ne 0 ]; then
+    if echo "$UPDATE_OUTPUT" | grep -q "No updates are to be performed"; then
+      echo -e "${YELLOW}ℹ️ Datadog 스택 변경사항이 없습니다.${NC}"
+    else
+      echo "$UPDATE_OUTPUT"
+      exit $UPDATE_STATUS
+    fi
+  else
     echo "대기 중..."
-    aws cloudformation wait stack-update-complete --stack-name $DD_STACK --region $REGION
+    aws cloudformation wait stack-update-complete --stack-name "$DD_STACK" --region "$REGION"
+  fi
 fi
 echo -e "${GREEN}✓ Datadog 스택 배포 완료${NC}"
 
-# 5. ECS Service 업데이트
 echo ""
 echo -e "${YELLOW}5. ECS Service를 Datadog Task Definition으로 업데이트 중...${NC}"
-
-ECS_CLUSTER=$(aws cloudformation describe-stacks \
-    --stack-name "$AGENTCORE_STACK_ID" \
-    --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" \
-    --output text --region $REGION)
-
-ECS_SERVICE=$(aws cloudformation describe-stacks \
-    --stack-name "$AGENTCORE_STACK_ID" \
-    --query "Stacks[0].Outputs[?OutputKey=='ECSServiceName'].OutputValue" \
-    --output text --region $REGION)
-
 aws ecs update-service \
-    --cluster "$ECS_CLUSTER" \
-    --service "$ECS_SERVICE" \
-    --task-definition agentcore-backend-datadog \
-    --force-new-deployment \
-    --region $REGION > /dev/null
-
+  --cluster "$ECS_CLUSTER" \
+  --service "$ECS_SERVICE" \
+  --task-definition "$DD_TASK_FAMILY" \
+  --force-new-deployment \
+  --region "$REGION" > /dev/null
 echo -e "${GREEN}✓ ECS Service 업데이트 완료 (새 태스크 배포 중...)${NC}"
 
 echo ""
