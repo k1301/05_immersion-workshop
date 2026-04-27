@@ -3,7 +3,7 @@ Step 3: RAG + AgentCore Gateway
 
 - Step 2의 RAG 품질 이슈를 그대로 유지
 - Helpdesk 작업은 Gateway MCP tool로만 수행
-- Gateway URL이 없거나 연결에 실패하면 명확히 실패
+
 """
 import json
 import os
