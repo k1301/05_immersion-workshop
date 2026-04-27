@@ -4,8 +4,8 @@ set -e
 # Bedrock Knowledge Base 생성 스크립트 (S3 Vector Store)
 
 REGION="us-east-1"
-KB_NAME="enterprise-agent-kb"
-S3_BUCKET="enterprise-agent-kb-docs-<YOUR_ACCOUNT_ID>"
+KB_NAME="agent-kb"
+S3_BUCKET="agent-kb-docs-<YOUR_ACCOUNT_ID>"
 S3_PREFIX="kb_docs/"
 EMBEDDING_MODEL="amazon.titan-embed-text-v2:0"
 
