@@ -1,7 +1,7 @@
 """
 Step 3: RAG + AgentCore Gateway
 
-- Step 2의 RAG 품질 이슈를 그대로 유지
+-Step 2의 RAG 및 챗봇 기능 포함
 - Helpdesk 작업은 Gateway MCP tool로만 수행
 
 """
