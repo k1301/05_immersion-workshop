@@ -75,10 +75,10 @@ it-helpdesk-api/
 │
 ├── cloudformation.yaml         # CloudFormation IaC 템플릿
 ├── deploy-cloudformation.sh    # CloudFormation 배포 스크립트
-├── CLOUDFORMATION.md          # CloudFormation 가이드
-│
-├── ECS_DEPLOY.md              # ECS 수동 배포 가이드
-├── EC2_DEPLOY.md              # EC2 배포 가이드 (빠른 테스트)
+├── docs/
+│   ├── CLOUDFORMATION.md      # CloudFormation 가이드
+│   ├── ECS_DEPLOY.md          # ECS 수동 배포 가이드
+│   └── EC2_DEPLOY.md          # EC2 배포 가이드 (빠른 테스트)
 ├── deploy.sh                  # EC2 배포 스크립트
 └── helpdesk-api.service       # Systemd 서비스 파일
 ```
@@ -135,7 +135,7 @@ open http://localhost:8000/docs
 3. CloudFormation 스택 생성
 4. ALB DNS 제공 (Bedrock Gateway 연결용)
 
-상세한 가이드는 **[CLOUDFORMATION.md](CLOUDFORMATION.md)**를 참고하세요.
+상세한 가이드는 **[docs/CLOUDFORMATION.md](docs/CLOUDFORMATION.md)**를 참고하세요.
 
 ---
 
@@ -143,7 +143,7 @@ open http://localhost:8000/docs
 
 CloudFormation 대신 직접 ECS 리소스를 관리하고 싶다면:
 
-상세한 배포 가이드는 **[ECS_DEPLOY.md](ECS_DEPLOY.md)**를 참고하세요.
+상세한 배포 가이드는 **[docs/ECS_DEPLOY.md](docs/ECS_DEPLOY.md)**를 참고하세요.
 
 간단 요약:
 ```bash
@@ -165,7 +165,7 @@ docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/it-helpdesk-api:latest
 
 간단한 테스트나 데모 목적으로 사용합니다.
 
-상세한 배포 가이드는 **[EC2_DEPLOY.md](EC2_DEPLOY.md)**를 참고하세요.
+상세한 배포 가이드는 **[docs/EC2_DEPLOY.md](docs/EC2_DEPLOY.md)**를 참고하세요.
 
 간단 요약:
 ```bash

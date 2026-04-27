@@ -3,6 +3,9 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+ARG CHAINLIT_APP_FILE=chainlit_app_basic.py
+ENV CHAINLIT_APP_FILE=${CHAINLIT_APP_FILE}
+
 # 시스템 패키지 (curl: healthcheck용)
 RUN apt-get update && apt-get install -y \
     curl \
@@ -14,10 +17,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # 애플리케이션 코드 복사
-COPY agent.py .
-COPY config.py .
-COPY chainlit_app.py .
-COPY chainlit.md .
+COPY *.py ./
+COPY *.md ./
 COPY .chainlit/ .chainlit/
 
 # Chainlit 포트
@@ -32,4 +33,4 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Chainlit 실행 (ddtrace 계측 포함)
-CMD ["ddtrace-run", "chainlit", "run", "chainlit_app.py", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "ddtrace-run chainlit run ${CHAINLIT_APP_FILE:-chainlit_app_basic.py} --host 0.0.0.0 --port 8000"]

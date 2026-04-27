@@ -12,6 +12,8 @@ REGION="${REGION:-us-east-1}"
 WORKSHOP_STACK="${WORKSHOP_STACK:-agentcore-workshop-stack}"
 DD_STACK="${DD_STACK:-agentcore-datadog-stack}"
 DD_TASK_FAMILY="agentcore-backend-datadog"
+DD_SITE="${DD_SITE:-datadoghq.com}"
+DD_ML_APP="${DD_ML_APP:-agentcore-backend}"
 
 echo "=========================================="
 echo "Datadog LLM Observability 연동"
@@ -73,10 +75,8 @@ if [ -z "$DD_API_KEY" ]; then
   echo -e "${RED}❌ Datadog API Key는 필수입니다.${NC}"
   exit 1
 fi
-read -r -p "Datadog Site [datadoghq.com]: " DD_SITE
-DD_SITE="${DD_SITE:-datadoghq.com}"
-read -r -p "ML App 이름 [agentcore-backend]: " DD_ML_APP
-DD_ML_APP="${DD_ML_APP:-agentcore-backend}"
+echo -e "${GREEN}✓ Datadog Site: $DD_SITE${NC}"
+echo -e "${GREEN}✓ ML App 이름: $DD_ML_APP${NC}"
 echo ""
 
 echo -e "${YELLOW}3. 기존 워크샵 스택에서 설정 가져오는 중...${NC}"

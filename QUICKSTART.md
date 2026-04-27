@@ -26,6 +26,9 @@ cd 05_immersion-workshop
 
 실습 페이지의 **스택 생성 버튼**을 클릭하여 CloudFormation 스택을 생성합니다.
 
+권장 스택 이름:
+- `agentcore-workshop-stack`
+
 생성되는 리소스:
 - VPC, 서브넷, IGW, ALB, ECS 서비스, Bedrock KB, Route53 DNS, ACM 인증서 등
 - Public ECR의 사전 빌드 이미지 사용 (helpdesk-api + agentcore-backend)
@@ -41,6 +44,12 @@ curl https://helpdesk.<ACCOUNT_ID>.fitcloud.click/tickets
 # AgentCore Backend (Chainlit) 접속
 # 브라우저에서: https://agentcore.<ACCOUNT_ID>.fitcloud.click
 ```
+
+CloudFormation 출력값에서 함께 확인할 항목:
+- `HelpdeskUrl`
+- `AgentcoreUrl`
+- `KnowledgeBaseId`
+- `GatewayApiKeySecretName`
 
 ---
 
@@ -84,7 +93,7 @@ Chainlit UI(`https://agentcore.<ACCOUNT_ID>.fitcloud.click`)에서:
 | 테스트 | 입력 | 예상 동작 |
 |---|---|---|
 | RAG 검색 | "연차 휴가 신청 방법 알려줘" | search_kb → KB 검색 결과 기반 답변 |
-| 티켓 생성 | "노트북이 고장났어요" | createTicket → 티켓 ID 반환 |
+| 티켓 생성 흐름 | "노트북이 고장났어요" | KB 검색 후 해결 정보가 없으면 티켓 생성 여부를 먼저 확인 |
 | 티켓 조회 | "우선순위 높은 티켓 보여줘" | getTickets(priority=high) |
 | 티켓 통계 | "현재 티켓 통계 알려줘" | getStatistics |
 
@@ -104,11 +113,25 @@ cd agentcore-backend
 - Datadog Site (기본: datadoghq.com)
 - ML App 이름 (기본: agentcore-backend)
 
+이 스크립트는 현재 배포된 `agentcore-workshop-stack`을 기준으로 동작합니다.
+
+내부적으로 수행하는 작업:
+- 워크샵 스택에서 `agentcore-backend` 관련 설정 조회
+- Datadog 환경변수가 포함된 새 ECS Task Definition 생성
+- ECS Service 강제 재배포
+
+> 즉시 반영되지 않고, 새 ECS 태스크가 healthy 상태가 될 때까지 몇 분 정도 걸릴 수 있습니다.
+
 ### 3-2. 연동 확인
 
-1. Chainlit UI에서 아무 질문 입력
+1. `deploy-datadog.sh` 실행 후 ECS 재배포가 끝날 때까지 잠시 대기
+2. Chainlit UI에서 새 질문 입력
 2. Datadog 콘솔 → LLM Observability → Traces
 3. 1~2분 후 트레이스 확인
+
+중요:
+- Datadog 연동 전에 발생한 요청은 trace로 보이지 않습니다.
+- Datadog 연동 후 **새로 보낸 요청부터** trace가 수집됩니다.
 
 ---
 
@@ -193,8 +216,8 @@ ddtrace-run python benchmark.py --models sonnet-4.5,haiku-3.5,sonnet-3.7
 # Datadog 스택 삭제
 aws cloudformation delete-stack --stack-name agentcore-datadog-stack --region us-east-1
 
-# 메인 스택 삭제 (VPC + 전체 인프라) — 실제 스택 이름으로 변경
-aws cloudformation delete-stack --stack-name <YOUR_STACK_NAME> --region us-east-1
+# 메인 스택 삭제 (VPC + 전체 인프라)
+aws cloudformation delete-stack --stack-name agentcore-workshop-stack --region us-east-1
 ```
 
 ---
