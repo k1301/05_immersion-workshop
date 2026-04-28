@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Bedrock AgentCore Gateway 실습</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        /* 1. THE SETUP */
+        * {
+            box-sizing: border-box;
+        }
+
+        p {
+            margin: 0;
+            margin-bottom: 15px;
+        }
+
+        body {
+            background-color: #0f172a; /* Dark sleek background */
+            display: grid;
+            gap: 20px;
+            grid-template-columns: 1fr;
+            margin: 0;
+            min-height: 100vh;
+            padding: 20px 0;
+            place-items: center;
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+
+        .slide-container {
+            align-items: center;
+            background-color: #0b1120;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            height: 720px;
+            justify-content: center;
+            overflow: hidden;
+            padding: 60px;
+            position: relative;
+            width: 1280px;
+            border: 1px solid #1e293b;
+        }
+
+        /* 1.1 BACKGROUND STYLING */
+        .slide-container::before {
+            content: '';
+            position: absolute;
+            top: -200px;
+            right: -200px;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.08) 0%, rgba(15, 23, 42, 0) 70%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .slide-container::after {
+            content: '';
+            position: absolute;
+            bottom: -200px;
+            left: -200px;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(168, 85, 247, 0.08) 0%, rgba(15, 23, 42, 0) 70%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .slide-container > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* 2. CONSISTENT TYPOGRAPHY */
+        .slide-container h1,
+        .slide-container h2,
+        .slide-container h3 {
+            color: #f8fafc;
+            font-weight: 700;
+            font-family: 'Poppins', 'Noto Sans KR', sans-serif;
+            margin: 0;
+            letter-spacing: -0.5px;
+        }
+
+        .slide-container h1 span, 
+        .slide-container h2 span {
+            background: linear-gradient(90deg, #38bdf8, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .slide-container p,
+        .slide-container li,
+        .slide-container .subtitle,
+        .slide-container .number-label,
+        .slide-container .legend li,
+        .slide-container .chart-summary,
+        .slide-container .bar .label,
+        .slide-container th,
+        .slide-container td,
+        .slide-container .alternating-text-tile p,
+        .slide-container .bleed-text-side p {
+            color: #cbd5e1;
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+
+        /* Consistent Font Sizes */
+        .slide-container h1 {
+            font-size: 58px;
+            line-height: 1.2;
+            margin-bottom: 20px;
+        }
+
+        .slide-container .slide-title {
+            font-size: 42px;
+            font-weight: 700;
+            margin-bottom: 40px;
+            text-align: left;
+            width: 100%;
+        }
+
+        .slide-container h3 {
+            font-size: 26px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #e2e8f0;
+        }
+
+        .slide-container p,
+        .slide-container li,
+        .slide-container .subtitle {
+            font-size: 20px;
+            line-height: 1.6;
+            font-weight: 300;
+        }
+
+        .slide-container .subtitle {
+            font-size: 24px;
+            font-weight: 400;
+            margin: 20px auto;
+            color: #94a3b8;
+            max-width: 900px;
+        }
+
+        .slide-container .content-area {
+            align-items: flex-start;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            justify-content: flex-start;
+            width: 100%;
+        }
+
+        /* 3. LAYOUT DEFINITIONS */
+        .title-layout {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .two-column {
+            align-items: stretch; 
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .two-column.tiled > div {
+            background-color: #1e293b;
+            border-radius: 16px;
+            border: 1px solid #334155;
+            padding: 40px;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .two-column.tiled h3 {
+            color: #38bdf8;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .two-column ul {
+            list-style: none;
+            margin: 0;
+            padding-left: 0;
+        }
+
+        .two-column li {
+            margin-bottom: 18px;
+            padding-left: 28px;
+            position: relative;
+        }
+
+        .two-column li::before {
+            content: '▹';
+            color: #a855f7;
+            position: absolute;
+            left: 0;
+            top: 0;
+            font-size: 22px;
+            line-height: 1.4;
+        }
+
+        .tiled-content {
+            align-items: stretch;
+            display: flex;
+            gap: 30px;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .tile {
+            align-items: center;
+            background-color: #1e293b;
+            border-radius: 16px;
+            border: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            justify-content: flex-start;
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .tile .icon {
+            color: #38bdf8;
+            font-size: 42px;
+            margin-bottom: 25px;
+            background: rgba(56, 189, 248, 0.1);
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .tile p {
+            font-size: 18px;
+        }
+
+        .bullet-list {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .bullet-list ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .bullet-list li {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            padding: 25px 30px 25px 70px;
+            position: relative;
+        }
+
+        .bullet-list i {
+            color: #10b981;
+            font-size: 28px;
+            left: 25px;
+            position: absolute;
+            top: 28px;
+        }
+
+        .bullet-list li strong {
+            color: #f8fafc;
+            font-weight: 700;
+            display: block;
+            font-size: 22px;
+            margin-bottom: 8px;
+        }
+
+        /* Q&A Layout */
+        .qa-layout {
+            margin: 0 auto;
+            text-align: center;
+            width: 100%;
+            align-self: center;
+        }
+
+        .qa-layout h2 {
+            font-size: 90px;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, #38bdf8, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .qa-layout p {
+            font-size: 26px;
+            color: #cbd5e1;
+        }
+
+        .qa-layout .contact-info {
+            color: #94a3b8;
+            font-size: 20px;
+            margin-top: 60px;
+            padding-top: 40px;
+            border-top: 1px solid #334155;
+            display: inline-block;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* --- DIAGRAM CSS STYLES --- */
+        .diagram-flow {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .diagram-node {
+            background: #1e293b;
+            border: 2px solid #38bdf8;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            flex: 1;
+            position: relative;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .diagram-node h4 {
+            color: #f8fafc;
+            margin: 0 0 10px 0;
+            font-size: 20px;
+        }
+        
+        .diagram-arrow {
+            color: #94a3b8;
+            font-size: 30px;
+            margin: 0 15px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .diagram-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+            align-items: center;
+        }
+        
+        .tag {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #38bdf8;
+            display: inline-block;
+            white-space: nowrap;
+        }
+        
+        .tag.highlight {
+            background: rgba(168, 85, 247, 0.2);
+            border-color: #a855f7;
+            color: #c084fc;
+            font-weight: bold;
+        }
+        
+        .diagram-container-box {
+            border: 2px dashed #64748b;
+            border-radius: 16px;
+            padding: 20px;
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.5);
+            margin: 0 10px;
+        }
+        
+        .diagram-node.disabled {
+            border-color: #475569;
+            background: rgba(30, 41, 59, 0.5);
+        }
+
+        .diagram-node.disabled h4, .diagram-node.disabled i, .diagram-node.disabled p {
+            color: #64748b !important;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Slide 1: Title_Slide -->
+<div class="slide-container" id="slide1">
+    <div class="title-layout">
+        <h1>Amazon Bedrock AgentCore Gateway 실습<br><span>Step-by-Step: 기본 챗봇부터 API 연동까지</span></h1>
+    </div>
+</div>
+
+<!-- Slide 2: Tiled_Text_With_Icons (Overall Flow) -->
+<div class="slide-container" id="slide2">
+    <h2 class="slide-title"><span>1.</span> 실습 전체 흐름</h2>
+    <div class="content-area">
+        <p style="margin-bottom: 40px; color: #94a3b8;">앱 기능을 3단계로 확장하며 생성형 AI 챗봇의 발전 과정을 실습합니다.</p>
+        <div class="tiled-content">
+            <div class="tile">
+                <div class="icon"><i class="fa-solid fa-robot"></i></div>
+                <h3>1. 기본 챗봇</h3>
+                <p>Chainlit 인터페이스와 Bedrock LLM만을 결합한 기본 챗봇 형태 구축</p>
+            </div>
+            <div class="tile">
+                <div class="icon"><i class="fa-solid fa-book-open"></i></div>
+                <h3>2. RAG 챗봇</h3>
+                <p>Knowledge Base를 연동하여 사내 근거 문서를 참조하는 RAG 추가</p>
+            </div>
+            <div class="tile">
+                <div class="icon" style="color: #a855f7; background: rgba(168, 85, 247, 0.1);"><i class="fa-solid fa-network-wired"></i></div>
+                <h3>3. Gateway 연결</h3>
+                <p>REST API를 Tool로 안전하게 실행하기 위한 Amazon Bedrock AgentCore Gateway 연동</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 3: Diagram Layout (Architecture Overview) -->
+<div class="slide-container" id="slide3">
+    <h2 class="slide-title"><span>2.</span> 전체 아키텍처</h2>
+    <div class="content-area">
+        <p style="margin-bottom: 20px; color: #94a3b8; text-align: center; width: 100%;">실습 중 각 단계에서 어떤 컴포넌트가 추가되는지 확인합니다.</p>
+        
+        <div class="diagram-flow" style="margin-top: 20px; align-items: stretch;">
+            <div class="diagram-node" style="flex: 0.8; justify-content: center;">
+                <i class="fa-solid fa-user-astronaut" style="font-size: 40px; color: #38bdf8; margin-bottom: 15px;"></i>
+                <h4>User</h4>
+            </div>
+            
+            <div class="diagram-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+            
+            <div class="diagram-node" style="flex: 1; border-color: #10b981; justify-content: center;">
+                <i class="fa-solid fa-robot" style="font-size: 40px; color: #10b981; margin-bottom: 15px;"></i>
+                <h4>Chainlit App</h4>
+                <div class="tag highlight" style="background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981; margin-top: 10px;">프론트엔드 UI</div>
+            </div>
+            
+            <div class="diagram-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+            
+            <div style="flex: 2; display: flex; flex-direction: column; gap: 15px;">
+                <div class="diagram-node" style="flex-direction: row; justify-content: flex-start; padding: 15px; border-color: #a855f7;">
+                    <i class="fa-solid fa-brain" style="font-size: 30px; color: #a855f7; margin-right: 20px; margin-left: 10px;"></i>
+                    <div style="text-align: left;">
+                        <h4 style="margin: 0 0 5px 0; font-size: 18px;">Step 1. Amazon Bedrock</h4>
+                        <p style="font-size: 14px; margin: 0; color: #cbd5e1;">파운데이션 모델 (기본 지식 응답)</p>
+                    </div>
+                </div>
+                
+                <div class="diagram-node" style="flex-direction: row; justify-content: flex-start; padding: 15px; border-color: #38bdf8;">
+                    <i class="fa-solid fa-database" style="font-size: 30px; color: #38bdf8; margin-right: 20px; margin-left: 10px;"></i>
+                    <div style="text-align: left;">
+                        <h4 style="margin: 0 0 5px 0; font-size: 18px;">Step 2. Knowledge Base</h4>
+                        <p style="font-size: 14px; margin: 0; color: #cbd5e1;">RAG 연동 (사내 규정 문서 검색)</p>
+                    </div>
+                </div>
+                
+                <div class="diagram-node" style="flex-direction: row; justify-content: flex-start; padding: 15px; border-color: #f59e0b;">
+                    <i class="fa-solid fa-shield-halved" style="font-size: 30px; color: #f59e0b; margin-right: 20px; margin-left: 10px;"></i>
+                    <div style="text-align: left;">
+                        <h4 style="margin: 0 0 5px 0; font-size: 18px;">Step 3. Amazon Bedrock AgentCore Gateway</h4>
+                        <p style="font-size: 14px; margin: 0; color: #cbd5e1;">REST API 호출 (티켓 생성/조회)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 4: Diagram Layout (Infrastructure) -->
+<div class="slide-container" id="slide4">
+    <h2 class="slide-title"><span>3.</span> 실습 준비: 인프라와 이미지 구조</h2>
+    <div class="content-area">
+        <p style="margin-bottom: 20px; color: #94a3b8; text-align: center; width: 100%;">초기 인프라는 스크립트로 배포하고, ECS 내부의 Chainlit 앱 이미지를 단계별로 교체합니다.</p>
+        
+        <div class="diagram-flow" style="margin-top: 40px;">
+            <div class="diagram-node" style="flex: 1.5; border-color: #a855f7;">
+                <i class="fa-solid fa-terminal" style="font-size: 30px; color: #a855f7; margin-bottom: 10px;"></i>
+                <h4>인프라 배포</h4>
+                <p style="font-size: 14px; margin:0;">deploy-aws.sh 실행</p>
+                <div class="diagram-stack">
+                    <div class="tag" style="border-color:#475569; color:#cbd5e1;">AWS CloudFormation</div>
+                    <div class="tag" style="border-color:#475569; color:#cbd5e1;">VPC / IAM / ALB / S3</div>
+                </div>
+            </div>
+            
+            <div class="diagram-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+            
+            <div class="diagram-container-box" style="flex: 3;">
+                <h4 style="color: #f8fafc; margin-top: 0; margin-bottom: 10px;"><i class="fa-brands fa-aws" style="color: #ff9900;"></i> Amazon ECS (Fargate)</h4>
+                <p style="font-size: 14px; margin-bottom: 20px;">컨테이너 이미지 교체 방식</p>
+                
+                <div style="display: flex; gap: 10px; width: 100%; align-items: center; justify-content: center;">
+                    <div class="diagram-node" style="padding: 15px; flex: 1;">
+                        <h4 style="font-size: 16px;">Step 1</h4>
+                        <div class="tag highlight">/basic</div>
+                    </div>
+                    <div class="diagram-arrow" style="margin: 0 5px;"><i class="fa-solid fa-arrow-right-arrow-left" style="font-size: 16px;"></i></div>
+                    <div class="diagram-node" style="padding: 15px; flex: 1;">
+                        <h4 style="font-size: 16px;">Step 2</h4>
+                        <div class="tag highlight">/rag</div>
+                    </div>
+                    <div class="diagram-arrow" style="margin: 0 5px;"><i class="fa-solid fa-arrow-right-arrow-left" style="font-size: 16px;"></i></div>
+                    <div class="diagram-node" style="padding: 15px; flex: 1;">
+                        <h4 style="font-size: 16px;">Step 3</h4>
+                        <div class="tag highlight">/gateway</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="diagram-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+            
+            <div class="diagram-node" style="flex: 1;">
+                <i class="fa-solid fa-browser" style="font-size: 30px; color: #10b981; margin-bottom: 10px;"></i>
+                <h4>Output 확인</h4>
+                <p style="font-size: 14px; margin:0;">Chainlit URL</p>
+                <p style="font-size: 14px; margin:0;">KB ID</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 5: Diagram Layout (Step 1) -->
+<div class="slide-container" id="slide5">
+    <h2 class="slide-title"><span>Step 1.</span> 기본 Chainlit 챗봇 완성도</h2>
+    <div class="content-area">
+        <p style="margin-bottom: 30px; color: #94a3b8; text-align: center; width: 100%;">RAG와 Gateway 없이, LLM 자체 지식만으로 응답하는 초기 단계 아키텍처입니다.</p>
+        
+        <div class="diagram-flow" style="margin-top: 50px; align-items: stretch;">
+            <div class="diagram-node" style="flex: 0.8;">
+                <i class="fa-solid fa-user-astronaut" style="font-size: 40px; color: #38bdf8; margin-bottom: 15px;"></i>
+                <h4>User</h4>
+                <p style="font-size: 15px; margin-bottom: 0;">"VPN 접속 방법 알려줘"</p>
+            </div>
+            
+            <div class="diagram-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+            
+            <div class="diagram-node" style="flex: 1.2; border-color: #10b981; background: rgba(16, 185, 129, 0.05);">
+                <i class="fa-solid fa-robot" style="font-size: 40px; color: #10b981; margin-bottom: 15px;"></i>
+                <h4>Chainlit App</h4>
+                <p style="font-size: 15px; margin-bottom: 10px;"><code>agent_basic.py</code></p>
+                <div class="tag highlight" style="background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981;">기본 채팅 UI 제공</div>
+            </div>
+            
+            <div class="diagram-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+            
+            <div class="diagram-node" style="flex: 1.2; border-color: #a855f7;">
+                <i class="fa-solid fa-brain" style="font-size: 40px; color: #a855f7; margin-bottom: 15px;"></i>
+                <h4>Amazon Bedrock</h4>
+                <p style="font-size: 15px; margin-bottom: 10px;">Foundation Model</p>
+                <div class="tag">일반 지식 기반 응답</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 6: Diagram Layout (Step 2) -->
+<div class="slide-container" id="slide6">
+    <h2 class="slide-title"><span>Step 2.</span> RAG 추가 아키텍처</h2>
+    <div class="content-area">
+        <p style="margin-bottom: 30px; color: #94a3b8; text-align: center; width: 100%;">사내 문서를 검색하여 환각(Hallucination)을 줄이고 정확한 답변과 근거를 제시합니다.</p>
+        
+        <div class="diagram-flow" style="margin-top: 20px; align-items: stretch;">
+            <div class="diagram-node" style="flex: 1;">
+                <i class="fa-solid fa-robot" style="font-size: 40px; color: #10b981; margin-bottom: 15px;"></i>
+                <h4>Chainlit App</h4>
+                <p style="font-size: 15px; margin-bottom: 10px;"><code>agent_rag.py</code></p>
+                <div class="tag">"답변 + 근거 문서" UI</div>
+            </div>
+            
+            <div class="diagram-arrow">
+                <i class="fa-solid fa-arrow-right-long"></i>
+                <span style="font-size: 12px; margin-top: 5px;">Retrieve</span>
+            </div>
+            
+            <div class="diagram-container-box" style="flex: 2; border-color: #38bdf8; padding: 15px;">
+                <h4 style="color: #f8fafc; margin-top: 0; margin-bottom: 15px;"><i class="fa-solid fa-database" style="color: #38bdf8;"></i> Bedrock Knowledge Base</h4>
+                <div style="display: flex; gap: 15px; width: 100%;">
+                    <div class="diagram-node" style="padding: 10px; flex: 1;">
+                        <i class="fa-solid fa-magnifying-glass" style="font-size: 20px; color: #38bdf8; margin-bottom: 5px;"></i>
+                        <h4 style="font-size: 14px; margin-bottom: 5px;">유사도 검색</h4>
+                        <p style="font-size: 12px; margin:0;">Vector Store</p>
+                    </div>
+                    <div class="diagram-node" style="padding: 10px; flex: 1; border-color: #f43f5e;">
+                        <i class="fa-solid fa-filter" style="font-size: 20px; color: #f43f5e; margin-bottom: 5px;"></i>
+                        <h4 style="font-size: 14px; margin-bottom: 5px;">Threshold</h4>
+                        <p style="font-size: 12px; margin:0;">문서 필터링</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="diagram-arrow">
+                <i class="fa-solid fa-arrow-right-long"></i>
+                <span style="font-size: 12px; margin-top: 5px;">Context 전달</span>
+            </div>
+            
+            <div class="diagram-node" style="flex: 1; border-color: #a855f7;">
+                <i class="fa-solid fa-brain" style="font-size: 40px; color: #a855f7; margin-bottom: 15px;"></i>
+                <h4>Amazon Bedrock</h4>
+                <p style="font-size: 15px; margin-bottom: 10px;">LLM</p>
+                <div class="tag highlight">RAG 기반 정확한 생성</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 7: Diagram Layout (Step 3 Gateway) -->
+<div class="slide-container" id="slide7">
+    <h2 class="slide-title"><span>Step 3.</span> Amazon Bedrock AgentCore Gateway로 REST API 연결</h2>
+    <div class="content-area">
+        <p style="margin-bottom: 20px; color: #94a3b8; text-align: center; width: 100%;">직접 호출 대신 Gateway MCP Tool을 통해 통제되고 안전한 환경에서 내부 API를 호출합니다.</p>
+        
+        <div class="diagram-flow" style="margin-top: 40px; align-items: stretch;">
+            <div class="diagram-node" style="flex: 1;">
+                <i class="fa-solid fa-robot" style="font-size: 40px; color: #10b981; margin-bottom: 15px;"></i>
+                <h4>Chainlit App</h4>
+                <p style="font-size: 15px; margin-bottom: 10px;"><code>agent_gateway.py</code></p>
+                <div class="tag">LLM + Tool Calling</div>
+            </div>
+            
+            <div class="diagram-arrow">
+                <span style="font-size: 12px; margin-bottom: 5px; color: #f43f5e;">API Key (Header)</span>
+                <i class="fa-solid fa-arrow-right-long"></i>
+                <span style="font-size: 12px; margin-top: 5px; color: #38bdf8;">MCP Protocol</span>
+            </div>
+            
+            <div class="diagram-node" style="flex: 1.5; border-color: #f59e0b; background: rgba(245, 158, 11, 0.05);">
+                <i class="fa-solid fa-shield-halved" style="font-size: 40px; color: #f59e0b; margin-bottom: 15px;"></i>
+                <h4>Amazon Bedrock<br>AgentCore Gateway</h4>
+                <p style="font-size: 15px; margin-bottom: 10px;">Target Routing & Auth</p>
+                <div class="diagram-stack">
+                    <div class="tag highlight" style="background: rgba(245, 158, 11, 0.2); border-color: #f59e0b; color: #f59e0b;">네트워크 접근 제어</div>
+                </div>
+            </div>
+            
+            <div class="diagram-arrow">
+                <span style="font-size: 12px; margin-bottom: 5px;">REST Call</span>
+                <i class="fa-solid fa-arrow-right-long"></i>
+            </div>
+            
+            <div class="diagram-node" style="flex: 1;">
+                <i class="fa-solid fa-server" style="font-size: 40px; color: #38bdf8; margin-bottom: 15px;"></i>
+                <h4>Helpdesk API</h4>
+                <p style="font-size: 15px; margin-bottom: 10px;">Target Endpoint</p>
+                <div class="tag">티켓 생성/조회 업무</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 8: Diagram Layout (Gateway Auth) -->
+<div class="slide-container" id="slide8">
+    <h2 class="slide-title">Gateway Outbound Auth: <span>API Key</span></h2>
+    <div class="content-area">
+        <p style="margin-bottom: 30px; color: #94a3b8; text-align: center; width: 100%;">Amazon Bedrock AgentCore Gateway가 Helpdesk REST API를 호출할 때, 인가된 호출임을 안전하게 증명하는 아키텍처입니다.</p>
+        
+        <div class="diagram-flow" style="margin-top: 40px; align-items: stretch;">
+            <!-- Secrets Manager -->
+            <div class="diagram-node" style="flex: 1; border-color: #f43f5e; justify-content: center;">
+                <i class="fa-solid fa-vault" style="font-size: 40px; color: #f43f5e; margin-bottom: 15px;"></i>
+                <h4>AWS Secrets Manager</h4>
+                <p style="font-size: 14px; margin:0; color: #cbd5e1;">API Key 원본 보안 저장</p>
+                <div class="tag" style="margin-top: 15px; background: rgba(244, 63, 94, 0.1); border-color: #f43f5e; color: #f43f5e;">AgentCore Identity</div>
+            </div>
+            
+            <div class="diagram-arrow">
+                <span style="font-size: 12px; margin-bottom: 5px; color: #f43f5e;">안전한 주입</span>
+                <i class="fa-solid fa-arrow-right-long" style="color: #f43f5e;"></i>
+            </div>
+            
+            <!-- Gateway -->
+            <div class="diagram-node" style="flex: 1.2; border-color: #f59e0b; justify-content: center;">
+                <i class="fa-solid fa-shield-halved" style="font-size: 40px; color: #f59e0b; margin-bottom: 15px;"></i>
+                <h4>Amazon Bedrock<br>AgentCore Gateway</h4>
+                <p style="font-size: 14px; margin:0; color: #cbd5e1;">개발자 투명성 보장</p>
+                <div class="tag highlight" style="margin-top: 15px; background: rgba(245, 158, 11, 0.2); border-color: #f59e0b; color: #f59e0b;">Header 자동 추가</div>
+            </div>
+            
+            <div class="diagram-arrow">
+                <span style="font-size: 12px; margin-bottom: 5px; color: #38bdf8;">x-api-key: &lt;secret&gt;</span>
+                <i class="fa-solid fa-arrow-right-long"></i>
+            </div>
+            
+            <!-- Target API -->
+            <div class="diagram-node" style="flex: 1; border-color: #38bdf8; justify-content: center;">
+                <i class="fa-solid fa-server" style="font-size: 40px; color: #38bdf8; margin-bottom: 15px;"></i>
+                <h4>Helpdesk API</h4>
+                <p style="font-size: 14px; margin:0; color: #cbd5e1;">요청 인가 및 실행</p>
+                <div class="tag" style="margin-top: 15px;">헤더 검증</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 9: Q&A -->
+<div class="slide-container" id="slide9">
+    <div class="qa-layout">
+        <h2>Q&A</h2>
+    </div>
+</div>
+
+</body>
+</html>

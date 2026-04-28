@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     # Bedrock Knowledge Base
     bedrock_kb_id: Optional[str] = None
     rag_number_of_results: int = 5
-    rag_score_threshold: float = 0.8
+    rag_score_threshold: float = 0.7
     rag_security_score_threshold: float = 0.95
 
     # IT Helpdesk API

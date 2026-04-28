@@ -14,5 +14,5 @@ def get_basic_llm(model_id: str | None = None) -> ChatBedrock:
     return ChatBedrock(
         model_id=model_id or settings.bedrock_model_id,
         region_name=settings.aws_region,
-        model_kwargs={"temperature": 0.7, "max_tokens": settings.bedrock_max_tokens},
+        model_kwargs={"temperature": 0.2, "max_tokens": settings.bedrock_max_tokens},
     )

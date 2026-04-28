@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, Query
+import os
+
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 from datetime import datetime
@@ -12,6 +14,9 @@ app = FastAPI(
     description="사내 IT 헬프데스크 시스템 REST API",
     version="1.0.0"
 )
+
+HELPDESK_API_KEY = os.getenv("HELPDESK_API_KEY", "").strip()
+AUTH_EXEMPT_PATHS = {"/", "/docs", "/openapi.json", "/redoc", "/favicon.ico"}
 
 # 인메모리 데이터 저장소
 tickets_db: dict[str, Ticket] = {}
@@ -99,6 +104,22 @@ def init_sample_data():
 @app.on_event("startup")
 async def startup_event():
     init_sample_data()
+
+
+@app.middleware("http")
+async def verify_api_key(request: Request, call_next):
+    """API 키가 설정된 경우 x-api-key 헤더를 검증한다."""
+    if not HELPDESK_API_KEY or request.url.path in AUTH_EXEMPT_PATHS:
+        return await call_next(request)
+
+    provided_api_key = request.headers.get("x-api-key", "").strip()
+    if provided_api_key != HELPDESK_API_KEY:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "유효한 x-api-key 헤더가 필요합니다."},
+        )
+
+    return await call_next(request)
 
 
 @app.get("/", tags=["Root"])

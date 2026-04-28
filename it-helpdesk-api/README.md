@@ -42,15 +42,19 @@ uvicorn main:app --reload --port 8000
 ### API 문서 확인
 서버 실행 후 http://localhost:8000/docs 에서 Swagger UI를 통해 API를 테스트할 수 있습니다.
 
+`HELPDESK_API_KEY` 환경변수가 설정된 경우, `/tickets`, `/tickets/{id}`, `/stats` 호출에는 `x-api-key` 헤더가 필요합니다.
+
 ### 간단한 테스트
 
 ```bash
 # 티켓 목록 조회
-curl http://localhost:8000/tickets | jq
+curl http://localhost:8000/tickets \
+  -H "x-api-key: <YOUR_API_KEY>" | jq
 
 # 새 티켓 생성
 curl -X POST http://localhost:8000/tickets \
   -H "Content-Type: application/json" \
+  -H "x-api-key: <YOUR_API_KEY>" \
   -d '{
     "title": "노트북이 느립니다",
     "description": "부팅에 10분 이상 걸립니다",
