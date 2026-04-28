@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     # 워크샵 시나리오 (normal / token_error / failure_to_answer)
     workshop_scenario: str = "normal"
 
-    # Bedrock max_tokens (시나리오용 - 낮추면 토큰 에러 재현)
+    # Bedrock max_tokens
     bedrock_max_tokens: int = 4096
 
     class Config:

@@ -65,6 +65,42 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-agentcore-master-stack.yaml}"
 PUBLIC_ECR_ALIAS="${PUBLIC_ECR_ALIAS:-j7s8j5m6}"
 AGENTCORE_IMAGE="${AGENTCORE_IMAGE:-public.ecr.aws/${PUBLIC_ECR_ALIAS}/agentcore-backend/gateway:latest}"
 GATEWAY_URL="${GATEWAY_MCP_URL:-}"
+WORKSHOP_SCENARIO="${WORKSHOP_SCENARIO:-normal}"
+TEMP_TEMPLATE_FILE=""
+
+cleanup() {
+    if [ -n "$TEMP_TEMPLATE_FILE" ] && [ -f "$TEMP_TEMPLATE_FILE" ]; then
+        rm -f "$TEMP_TEMPLATE_FILE"
+    fi
+}
+
+prepare_template() {
+    ACTIVE_TEMPLATE_FILE="${SCRIPT_DIR}/${TEMPLATE_FILE}"
+
+    if [ "$WORKSHOP_SCENARIO" = "token_error" ]; then
+        TEMP_TEMPLATE_FILE="$(mktemp /tmp/agentcore-gateway-template.XXXXXX.yaml)"
+        awk '
+            /Name: WORKSHOP_SCENARIO/ {
+                print
+                getline
+                sub(/\047normal\047/, "\047token_error\047")
+                print
+                next
+            }
+            /Name: BEDROCK_MAX_TOKENS/ {
+                print
+                getline
+                sub(/\0474096\047/, "\04780\047")
+                print
+                next
+            }
+            { print }
+        ' "$ACTIVE_TEMPLATE_FILE" > "$TEMP_TEMPLATE_FILE"
+        ACTIVE_TEMPLATE_FILE="$TEMP_TEMPLATE_FILE"
+    fi
+}
+
+trap cleanup EXIT
 
 if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --no-cli-pager >/dev/null 2>&1; then
     echo "Stack '$STACK_NAME' does not exist. Create it first."
@@ -80,6 +116,8 @@ if [ -z "$GATEWAY_URL" ]; then
     exit 1
 fi
 
+prepare_template
+
 echo "Deploying gateway step"
 echo "Stack: $STACK_NAME"
 echo "Region: $REGION"
@@ -88,7 +126,7 @@ echo "Gateway MCP URL: $GATEWAY_URL"
 
 aws cloudformation update-stack \
     --stack-name "$STACK_NAME" \
-    --template-body "file://${SCRIPT_DIR}/${TEMPLATE_FILE}" \
+    --template-body "file://${ACTIVE_TEMPLATE_FILE}" \
     --capabilities CAPABILITY_NAMED_IAM \
     --parameters \
         ParameterKey=HelpdeskContainerImage,UsePreviousValue=true \
