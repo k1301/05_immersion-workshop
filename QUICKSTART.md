@@ -1,6 +1,6 @@
 # 워크샵 빠른 시작 가이드
 
-이 저장소는 **단계형 기업용 업무 에이전트 워크샵**을 위한 예제입니다.
+이 저장소는 **단계형 사내용 업무 에이전트 워크샵**을 위한 예제입니다.
 
 워크샵 흐름은 아래 3단계로 구성됩니다.
 
@@ -10,8 +10,6 @@
    챗봇 + Bedrock Knowledge Base 기반 RAG
 3. `gateway`
    챗봇 + RAG + AgentCore Gateway + Helpdesk REST API
-
-Datadog 실습은 앱을 새로 만드는 단계가 아니라, **Step 2/3에 이미 존재하는 동작과 이슈를 관측하는 단계**로 봅니다.
 
 ---
 
@@ -68,7 +66,7 @@ aws cloudformation describe-stacks \
 
 참고:
 - Step 1에서도 Knowledge Base 리소스는 이미 생성되어 있습니다.
-- 하지만 Step 1 앱은 KB를 사용하지 않으므로, 사용자에게는 일반 챗봇처럼 보입니다.
+- 하지만 Step 1 앱은 KB를 사용하지 않으므로, 일반 챗봇처럼 보입니다.
 
 ---
 
@@ -140,7 +138,7 @@ Step 2는 **기본 챗봇에 search_kb tool routing과 RAG를 추가한 버전**
 - 사내 문서성 질문만 Bedrock Knowledge Base 검색
 - 답변과 함께 `근거 문서` 표시
 - score는 사용자에게 직접 노출하지 않음
-- Step 2부터 RAG 품질 이슈가 내장됨
+- Step 2부터 RAG 품질 이슈가 존재
 
 ### 4-1. RAG 품질 이슈
 
@@ -228,7 +226,6 @@ Step 3는 **Step 2에 AgentCore Gateway와 Helpdesk REST API 실행을 추가한
 1. AWS 콘솔 → Bedrock → AgentCore → Gateway 생성
 2. 이름: `helpdesk-gateway`
 3. 인바운드 인증: `IAM (SigV4)`
-4. Semantic Search: 비활성화
 
 주의:
 - 기본값인 JWT를 그대로 두면 연결이 실패할 수 있습니다.
@@ -239,7 +236,7 @@ Step 3는 **Step 2에 AgentCore Gateway와 Helpdesk REST API 실행을 추가한
 2. 타겟 유형: REST API (OpenAPI)
 3. `it-helpdesk-api/openapi.json` 사용
 4. 서버 URL을 `HelpdeskUrl`로 맞춤
-5. 인증: API Key
+5. 인증: API Key (먼저 생성할 것을 권장)
 
 생성되는 주요 tool:
 - `createTicket`
