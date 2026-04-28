@@ -65,7 +65,7 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-agentcore-master-stack.yaml}"
 PUBLIC_ECR_ALIAS="${PUBLIC_ECR_ALIAS:-j7s8j5m6}"
 AGENTCORE_IMAGE="${AGENTCORE_IMAGE:-public.ecr.aws/${PUBLIC_ECR_ALIAS}/agentcore-backend/gateway:latest}"
 GATEWAY_URL="${GATEWAY_MCP_URL:-}"
-WORKSHOP_SCENARIO="${WORKSHOP_SCENARIO:-normal}"
+WORKSHOP_SCENARIO="${WORKSHOP_SCENARIO:-token_error}"
 TEMP_TEMPLATE_FILE=""
 
 cleanup() {
@@ -78,7 +78,7 @@ prepare_template() {
     ACTIVE_TEMPLATE_FILE="${SCRIPT_DIR}/${TEMPLATE_FILE}"
 
     if [ "$WORKSHOP_SCENARIO" = "token_error" ]; then
-        TEMP_TEMPLATE_FILE="$(mktemp /tmp/agentcore-gateway-template.XXXXXX.yaml)"
+        TEMP_TEMPLATE_FILE="$(mktemp "${TMPDIR:-/tmp}/agentcore-gateway-template.XXXXXX")"
         awk '
             /Name: WORKSHOP_SCENARIO/ {
                 print

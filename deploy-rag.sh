@@ -21,7 +21,7 @@ prepare_template() {
     ACTIVE_TEMPLATE_FILE="${SCRIPT_DIR}/${TEMPLATE_FILE}"
 
     if [ "$WORKSHOP_SCENARIO" = "token_error" ]; then
-        TEMP_TEMPLATE_FILE="$(mktemp /tmp/agentcore-rag-template.XXXXXX.yaml)"
+        TEMP_TEMPLATE_FILE="$(mktemp "${TMPDIR:-/tmp}/agentcore-rag-template.XXXXXX")"
         awk '
             /Name: WORKSHOP_SCENARIO/ {
                 print
