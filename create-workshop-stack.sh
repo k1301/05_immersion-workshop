@@ -28,23 +28,30 @@ get_stack_output() {
         --stack-name "$STACK_NAME" \
         --region "$REGION" \
         --query "Stacks[0].Outputs[?OutputKey=='${output_key}'].OutputValue" \
-        --output text
+        --output text \
+        --no-cli-pager
 }
 
 print_stack_outputs() {
-    local workshop_app_url helpdesk_url kb_id
+    local helpdesk_url gateway_secret_arn gateway_secret_name workshop_app_url kb_docs_bucket kb_id
 
-    workshop_app_url=$(get_stack_output "WorkshopAppUrl")
     helpdesk_url=$(get_stack_output "HelpdeskUrl")
+    gateway_secret_arn=$(get_stack_output "GatewayApiKeySecretArn")
+    gateway_secret_name=$(get_stack_output "GatewayApiKeySecretName")
+    workshop_app_url=$(get_stack_output "WorkshopAppUrl")
+    kb_docs_bucket=$(get_stack_output "KBDocsBucketName")
     kb_id=$(get_stack_output "KnowledgeBaseId")
 
     echo
     echo "=================================================="
     echo " Workshop Outputs"
     echo "=================================================="
-    echo "Workshop App URL      : $workshop_app_url"
-    echo "Helpdesk API URL      : $helpdesk_url"
-    echo "Knowledge Base ID     : $kb_id"
+    echo "HelpdeskUrl            : $helpdesk_url"
+    echo "GatewayApiKeySecretArn : $gateway_secret_arn"
+    echo "GatewayApiKeySecretName: $gateway_secret_name"
+    echo "WorkshopAppUrl         : $workshop_app_url"
+    echo "KBDocsBucketName       : $kb_docs_bucket"
+    echo "KnowledgeBaseId        : $kb_id"
     echo "=================================================="
 }
 
@@ -67,8 +74,8 @@ IMAGE_BASE="${IMAGE_BASE:-public.ecr.aws/j7s8j5m6/agentcore-backend}"
 AGENTCORE_IMAGE="${AGENTCORE_IMAGE:-${IMAGE_BASE}/basic:latest}"
 GATEWAY_URL="${GATEWAY_MCP_URL:-}"
 
-if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" >/dev/null 2>&1; then
-    echo "Stack '$STACK_NAME' already exists. Use ./deploy-step.sh to switch steps."
+if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --no-cli-pager >/dev/null 2>&1; then
+    echo "Stack '$STACK_NAME' already exists. Use ./deploy-rag.sh or ./deploy-gateway.sh to switch steps."
     exit 1
 fi
 
@@ -89,11 +96,13 @@ aws cloudformation create-stack \
     --template-body "file://${SCRIPT_DIR}/${TEMPLATE_FILE}" \
     --capabilities CAPABILITY_NAMED_IAM \
     --parameters "${PARAMETERS[@]}" \
-    --region "$REGION"
+    --region "$REGION" \
+    --no-cli-pager
 
 aws cloudformation wait stack-create-complete \
     --stack-name "$STACK_NAME" \
-    --region "$REGION"
+    --region "$REGION" \
+    --no-cli-pager
 
 echo
 echo "Stack created successfully."
