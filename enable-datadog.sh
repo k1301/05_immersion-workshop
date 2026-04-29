@@ -17,7 +17,7 @@ Environment overrides:
   GATEWAY_MCP_URL  Gateway MCP URL override
   DD_API_KEY       Datadog API key override
   DD_SITE          Datadog site (default: datadoghq.com)
-  DD_LLMOBS_ML_APP Datadog LLM Observability ML app (default: agentcore-workshop)
+  DD_LLMOBS_ML_APP Datadog LLM Observability ML app (default: agentcore-backend)
   DD_SERVICE       Datadog service name (default: agentcore-backend)
   DD_ENV           Datadog environment name (default: workshop)
 EOF
@@ -66,6 +66,31 @@ get_stack_parameter() {
         --query "Stacks[0].Parameters[?ParameterKey=='${parameter_key}'].ParameterValue | [0]" \
         --output text \
         --no-cli-pager 2>/dev/null || true
+}
+
+get_agent_task_definition() {
+    aws ecs describe-services \
+        --cluster workshop \
+        --services agent-backend-service \
+        --region "$REGION" \
+        --query 'services[0].taskDefinition' \
+        --output text 2>/dev/null || true
+}
+
+get_task_env_value() {
+    local task_definition="$1"
+    local env_name="$2"
+
+    if [ -z "$task_definition" ] || [ "$task_definition" = "None" ]; then
+        echo ""
+        return
+    fi
+
+    aws ecs describe-task-definition \
+        --task-definition "$task_definition" \
+        --region "$REGION" \
+        --query "taskDefinition.containerDefinitions[0].environment[?name=='${env_name}'].value | [0]" \
+        --output text 2>/dev/null || true
 }
 
 normalize_text() {
@@ -149,7 +174,7 @@ AGENTCORE_IMAGE="${AGENTCORE_IMAGE:-public.ecr.aws/${PUBLIC_ECR_ALIAS}/agentcore
 GATEWAY_URL="${GATEWAY_MCP_URL:-}"
 DD_API_KEY="${DD_API_KEY:-}"
 DD_SITE="${DD_SITE:-datadoghq.com}"
-DD_ML_APP="${DD_LLMOBS_ML_APP:-agentcore-workshop}"
+DD_ML_APP="${DD_LLMOBS_ML_APP:-agentcore-backend}"
 DD_SERVICE="${DD_SERVICE:-agentcore-backend}"
 DD_ENV="${DD_ENV:-workshop}"
 TEMP_TEMPLATE_FILE=""
@@ -172,6 +197,11 @@ fi
 if [ -z "$GATEWAY_URL" ]; then
     echo "Gateway MCP URL이 비어 있습니다."
     exit 1
+fi
+
+if [ -z "$DD_API_KEY" ]; then
+    CURRENT_TASK_DEFINITION="$(normalize_text "$(get_agent_task_definition)")"
+    DD_API_KEY="$(normalize_text "$(get_task_env_value "$CURRENT_TASK_DEFINITION" "DD_API_KEY")")"
 fi
 
 if [ -z "$DD_API_KEY" ]; then

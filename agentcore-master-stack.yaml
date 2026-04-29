@@ -24,7 +24,7 @@ Parameters:
     Description: Datadog site, for example datadoghq.com or datadoghq.eu
   DatadogMlApp:
     Type: String
-    Default: 'agentcore-workshop'
+    Default: 'agentcore-backend'
     Description: Datadog LLM Observability ML app name
   DatadogService:
     Type: String
