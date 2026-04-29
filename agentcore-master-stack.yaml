@@ -13,6 +13,29 @@ Parameters:
     Type: String
     Default: ''
     Description: AgentCore Gateway MCP URL
+  DatadogApiKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Datadog API key for LLM Observability
+  DatadogSite:
+    Type: String
+    Default: 'datadoghq.com'
+    Description: Datadog site, for example datadoghq.com or datadoghq.eu
+  DatadogMlApp:
+    Type: String
+    Default: 'agentcore-workshop'
+    Description: Datadog LLM Observability ML app name
+  DatadogService:
+    Type: String
+    Default: 'agentcore-backend'
+    Description: Datadog service name
+  DatadogEnv:
+    Type: String
+    Default: 'workshop'
+    Description: Datadog environment name
+Conditions:
+  HasDatadogApiKey: !Not [!Equals [!Ref DatadogApiKey, '']]
 Resources:
   # VPC
   VPC:
@@ -930,6 +953,33 @@ Resources:
               Value: 'normal'
             - Name: BEDROCK_MAX_TOKENS
               Value: '4096'
+            - Name: DD_API_KEY
+              Value: !Ref DatadogApiKey
+            - Name: DD_SITE
+              Value: !Ref DatadogSite
+            - Name: DD_SERVICE
+              Value: !Ref DatadogService
+            - Name: DD_ENV
+              Value: !Ref DatadogEnv
+            - Name: DD_VERSION
+              Value: 'workshop'
+            - Name: DD_LLMOBS_ENABLED
+              Value: !If
+                - HasDatadogApiKey
+                - 'true'
+                - 'false'
+            - Name: DD_LLMOBS_ML_APP
+              Value: !Ref DatadogMlApp
+            - Name: DD_LLMOBS_AGENTLESS_ENABLED
+              Value: !If
+                - HasDatadogApiKey
+                - 'true'
+                - 'false'
+            - Name: DD_TRACE_ENABLED
+              Value: !If
+                - HasDatadogApiKey
+                - 'true'
+                - 'false'
           LogConfiguration:
             LogDriver: awslogs
             Options:

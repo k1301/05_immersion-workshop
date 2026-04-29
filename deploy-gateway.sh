@@ -18,6 +18,7 @@ Environment overrides:
   PUBLIC_ECR_ALIAS Public ECR alias (default: j7s8j5m6)
   AGENTCORE_IMAGE  Full backend image URI override
   GATEWAY_MCP_URL  Gateway MCP URL override
+  WORKSHOP_SCENARIO Scenario override (default: normal)
 EOF
 }
 
@@ -65,7 +66,7 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-agentcore-master-stack.yaml}"
 PUBLIC_ECR_ALIAS="${PUBLIC_ECR_ALIAS:-j7s8j5m6}"
 AGENTCORE_IMAGE="${AGENTCORE_IMAGE:-public.ecr.aws/${PUBLIC_ECR_ALIAS}/agentcore-backend/gateway:latest}"
 GATEWAY_URL="${GATEWAY_MCP_URL:-}"
-WORKSHOP_SCENARIO="${WORKSHOP_SCENARIO:-token_error}"
+WORKSHOP_SCENARIO="${WORKSHOP_SCENARIO:-normal}"
 TEMP_TEMPLATE_FILE=""
 
 cleanup() {
