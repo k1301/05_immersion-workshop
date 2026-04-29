@@ -94,7 +94,6 @@ print_datadog_outputs() {
     echo "Gateway MCP URL       : $GATEWAY_URL"
     echo "Datadog Site          : $DD_SITE"
     echo "Datadog ML App        : $DD_ML_APP"
-    echo "Scenario              : token_error"
     echo "=================================================="
 }
 
@@ -194,7 +193,6 @@ echo "Backend image: $AGENTCORE_IMAGE"
 echo "Gateway MCP URL: $GATEWAY_URL"
 echo "Datadog Site: $DD_SITE"
 echo "Datadog ML App: $DD_ML_APP"
-echo "Scenario: token_error"
 
 set +e
 UPDATE_OUTPUT="$(aws cloudformation update-stack \
