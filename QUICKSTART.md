@@ -1,15 +1,19 @@
 # 워크샵 빠른 시작 가이드
 
-이 저장소는 **단계형 사내용 업무 에이전트 워크샵**을 위한 예제입니다.
+이 저장소는 **사내용 업무 에이전트 워크샵 실행본**입니다.
 
-워크샵 흐름은 아래 3단계로 구성됩니다.
+아래 스크립트 순서로 진행합니다.
 
-1. `chatbot`
-   기본 Chainlit 챗봇
-2. `rag`
-   챗봇 + Bedrock Knowledge Base 기반 RAG
-3. `gateway`
-   챗봇 + RAG + AgentCore Gateway + Helpdesk REST API
+1. `./create-workshop-stack.sh`
+   기본 인프라와 기본 챗봇 앱을 배포합니다.
+2. `./deploy-rag.sh`
+   Bedrock Knowledge Base 기반 RAG 앱으로 업데이트합니다.
+3. `./deploy-gateway.sh`
+   AgentCore Gateway MCP URL을 연결하고 Helpdesk API tool을 활성화합니다.
+4. `./enable-datadog.sh`
+   Datadog API Key를 적용하고 LLM Observability 관측 설정을 활성화합니다.
+
+이 저장소는 워크샵 진행에 맞춰 **배포 스크립트 중심**으로 정리한 버전입니다.
 
 ---
 
@@ -18,345 +22,236 @@
 - AWS 계정
 - Bedrock 모델 액세스 활성화
 - 리전: `us-east-1`
-- AWS CLI 설정 완료: `aws configure`
+- AWS CLI 설정 완료
 - Docker
-- Python 3.11+
-- Datadog 계정 + API Key
+- Datadog 계정 및 API Key
 
 ---
 
 ## 1. 리포지토리 준비
 
 ```bash
-git clone <REPO_URL>
+git clone https://github.com/k1301/05_immersion-workshop.git
 cd 05_immersion-workshop
 ```
 
 ---
 
-## 2. 인프라 배포
+## 2. Step 1: 워크샵 스택 생성
 
-CloudFormation으로 워크샵 인프라를 먼저 배포합니다.
-
-권장 스택 이름:
-- `agentcore-workshop-stack`
+```bash
+./create-workshop-stack.sh
+```
 
 생성되는 주요 리소스:
+
 - ECS Cluster / Service
 - AgentCore Backend ALB
 - Helpdesk API ALB
 - Bedrock Knowledge Base
 - Route53 / ACM
+- Gateway outbound 인증용 API Key Secret
 
-스택 생성 후 CloudFormation Outputs에서 아래 값을 확인합니다.
+완료 후 주요 출력:
 
 - `WorkshopAppUrl`
 - `HelpdeskUrl`
 - `KnowledgeBaseId`
+- `KBDocsBucketName`
 - `GatewayApiKeySecretName`
+- `GatewayApiKeySecretArn`
 
-예시:
+처음 배포되는 앱은 기본 Chainlit 챗봇입니다. Knowledge Base 리소스는 생성되지만, Step 1 앱은 KB를 사용하지 않습니다.
+
+---
+
+## 3. Step 2: RAG 앱 배포
 
 ```bash
-aws cloudformation describe-stacks \
-  --stack-name agentcore-workshop-stack \
+./deploy-rag.sh
+```
+
+Step 2는 기본 챗봇에 Bedrock Knowledge Base 검색을 추가합니다.
+
+특징:
+
+- 사내 문서성 질문은 `search_kb` tool로 검색
+- 답변과 함께 근거 문서 표시
+- 검색 결과와 근거 문서를 바탕으로 답변
+- Datadog LLM Observability에서 RAG 검색 흐름을 확인 가능
+
+확인 질문 예시:
+
+```text
+연차 휴가 신청 방법 알려줘
+경비 처리 절차 알려줘
+온보딩 절차 알려줘
+```
+
+---
+
+## 4. Step 3: AgentCore Gateway 연결
+
+먼저 AWS 콘솔에서 Helpdesk API Key를 AgentCore credential로 등록한 뒤, AgentCore Gateway와 REST API target을 생성합니다.
+
+API Key 값 확인
+- 이름: `helpdesk-api-gateway-key`
+- API 키 값은 Step 1에서 Secrets Manager에 생성된 값을 사용합니다.
+
+```bash
+aws secretsmanager get-secret-value \
+  --secret-id helpdesk-api-gateway-key \
   --region us-east-1 \
-  --query "Stacks[0].Outputs"
+  --query SecretString \
+  --output text \
+  --no-cli-pager
 ```
 
-참고:
-- Step 1에서도 Knowledge Base 리소스는 이미 생성되어 있습니다.
-- 하지만 Step 1 앱은 KB를 사용하지 않으므로, 일반 챗봇처럼 보입니다.
+AgentCore API Key credential 등록:
 
----
+- AgentCore 콘솔에서 API Key credential/provider를 생성합니다.
+- 이름: `helpdesk-api-gateway-key`
+- API Key 값: 위 명령어로 확인한 Secrets Manager 값
+- 위치: Header
+- Header 이름: `x-api-key`
 
-## 3. Step 1 배포: `chatbot`
+Gateway 생성 권장값:
 
-Step 1은 **LLM만 사용하는 기본 Chainlit 챗봇**입니다.
-
-사용 파일:
-- `agentcore-backend/agent_basic.py`
-- `agentcore-backend/chainlit_app_basic.py`
-
-특징:
-- RAG 없음
-- Gateway 없음
-- Helpdesk API 실행 없음
-
-### 3-1. 이미지
-
-ECR 태그:
-- `chatbot`
-
-### 3-2. 배포
-
-```bash
-aws cloudformation update-stack \
-  --stack-name agentcore-workshop-stack \
-  --use-previous-template \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameters \
-    ParameterKey=HelpdeskContainerImage,UsePreviousValue=true \
-    ParameterKey=AgentcoreContainerImage,ParameterValue=654251711600.dkr.ecr.us-east-1.amazonaws.com/agentcore-backend:chatbot \
-    ParameterKey=GatewayMcpUrl,UsePreviousValue=true \
-  --region us-east-1
-```
-
-```bash
-aws cloudformation wait stack-update-complete \
-  --stack-name agentcore-workshop-stack \
-  --region us-east-1
-```
-
-### 3-3. 확인
-
-브라우저:
-- `https://workshop.<ACCOUNT_ID>.fitcloud.click`
-
-추천 질문:
-- `안녕하세요`
-- `연차 휴가 신청 방법 알려줘`
-- `헬프데스크 티켓 생성해줘`
-
-기대 결과:
-- 기본 대화는 됨
-- 사내 문서 근거는 없음
-- 실제 업무 실행은 안 됨
-
----
-
-## 4. Step 2 배포: `rag`
-
-Step 2는 **기본 챗봇에 search_kb tool routing과 RAG를 추가한 버전**입니다.
-
-사용 파일:
-- `agentcore-backend/agent_rag.py`
-- `agentcore-backend/chainlit_app_rag.py`
-
-특징:
-- 일반 질문은 기본 챗봇처럼 직접 답변
-- 사내 문서성 질문만 Bedrock Knowledge Base 검색
-- 답변과 함께 `근거 문서` 표시
-- score는 사용자에게 직접 노출하지 않음
-- Step 2부터 RAG 품질 이슈가 존재
-
-### 4-1. RAG 품질 이슈
-
-보안 질문은 일반 질문보다 더 높은 threshold를 사용합니다.
-
-- 기본 threshold: `rag_score_threshold`
-- 보안 질문 threshold: `rag_security_score_threshold = 0.95`
-
-보안 질문 여부는 LLM 분류로 결정합니다.
-
-의도된 시나리오:
-- 검색 후보는 존재함
-- 하지만 threshold filtering 이후 `filtered_count = 0`
-- 사용자에게는 자연스럽게 실패처럼 보임
-
-즉 Datadog에서 볼 핵심은:
-- `route`
-- `rag.used`
-- `tool.called`
-- `tool.calls`
-- `rag.threshold`
-- `rag.top_score`
-- `rag.retrieved_count`
-- `rag.filtered_count`
-- `rag.filtered_out_count`
-- `rag.failure_reason`
-- `rag.is_security_query`
-
-### 4-2. 이미지
-
-ECR 태그:
-- `rag`
-
-### 4-3. 배포
-
-```bash
-aws cloudformation update-stack \
-  --stack-name agentcore-workshop-stack \
-  --use-previous-template \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameters \
-    ParameterKey=HelpdeskContainerImage,UsePreviousValue=true \
-    ParameterKey=AgentcoreContainerImage,ParameterValue=654251711600.dkr.ecr.us-east-1.amazonaws.com/agentcore-backend:rag \
-    ParameterKey=GatewayMcpUrl,UsePreviousValue=true \
-  --region us-east-1
-```
-
-```bash
-aws cloudformation wait stack-update-complete \
-  --stack-name agentcore-workshop-stack \
-  --region us-east-1
-```
-
-### 4-4. 확인
-
-정상 질문:
-- `연차 휴가 신청 방법 알려줘`
-
-오류 시나리오 질문:
-- `VPN 접속 방법 알려줘`
-- `비밀번호 변경 방법 알려줘`
-
-기대 결과:
-- 정상 질문: KB 기반 답변 + `근거 문서`
-- 보안 질문: `현재 검색 기준을 통과한 문서가 없습니다.` 같은 응답
-
----
-
-## 5. Step 3 배포: `gateway`
-
-Step 3는 **Step 2에 AgentCore Gateway와 Helpdesk REST API 실행을 추가한 버전**입니다.
-
-사용 파일:
-- `agentcore-backend/agent_gateway.py`
-- `agentcore-backend/chainlit_app_gateway.py`
-
-특징:
-- Step 2의 RAG 동작 유지
-- Helpdesk 작업은 Gateway MCP Tool을 통해서만 실행
-- direct REST fallback 없음
-- `GATEWAY_MCP_URL`이 없거나 Gateway 로딩에 실패하면 명확히 실패
-
-### 5-1. Gateway 생성
-
-1. AWS 콘솔 → Bedrock → AgentCore → Gateway 생성
-2. 이름: `helpdesk-gateway`
-3. 인바운드 인증: `IAM (SigV4)`
-
-주의:
-- 기본값인 JWT를 그대로 두면 연결이 실패할 수 있습니다.
-
-### 5-2. 타겟 추가
-
-1. Gateway → 타겟 추가
-2. 타겟 유형: REST API (OpenAPI)
-3. `it-helpdesk-api/openapi.json` 사용
-4. 서버 URL을 `HelpdeskUrl`로 맞춤
-5. 인증: API Key (먼저 생성할 것을 권장)
+- 이름: `it-helpdesk-gateway`
+- 인바운드 인증: `IAM (SigV4)`
+- Target 이름: `helpdesk-rest-target`
+- Target 유형: REST API (OpenAPI)
+- OpenAPI 파일: `it-helpdesk-api/openapi.json`
+- 서버 URL: Step 1 출력의 `HelpdeskUrl`
+- outbound 인증: API Key
+- API Key: 위에서 등록한 `helpdesk-api-gateway-key` credential 선택
+- API Key header 이름: `x-api-key`
 
 생성되는 주요 tool:
+
 - `createTicket`
 - `getTickets`
 - `getTicket`
 - `updateTicket`
 - `getStatistics`
 
-### 5-3. Gateway URL 연결
-
-Gateway의 MCP URL을 스택 파라미터에 반영합니다.
+Gateway MCP URL을 확인한 뒤 실행합니다.
 
 ```bash
-./update-gateway.sh
+./deploy-gateway.sh
 ```
 
-또는 CloudFormation 파라미터 `GatewayMcpUrl`만 직접 업데이트해도 됩니다.
+스크립트가 `Gateway MCP URL`을 물어보면 Gateway 콘솔의 MCP URL을 입력합니다.
 
-### 5-4. 이미지
+Step 3 특징:
 
-ECR 태그:
-- `gateway`
+- RAG 동작 유지
+- Helpdesk 작업은 Gateway MCP tool로만 수행
+- direct REST fallback 없음
+- 티켓 조회/수정/통계 요청은 Gateway tool 사용
+- IT 장애 요청은 사내 문서 확인 후 필요하면 티켓 생성 여부를 물어봄
 
-### 5-5. 배포
+확인 질문 예시:
 
-```bash
-aws cloudformation update-stack \
-  --stack-name agentcore-workshop-stack \
-  --use-previous-template \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameters \
-    ParameterKey=HelpdeskContainerImage,UsePreviousValue=true \
-    ParameterKey=AgentcoreContainerImage,ParameterValue=654251711600.dkr.ecr.us-east-1.amazonaws.com/agentcore-backend:gateway \
-    ParameterKey=GatewayMcpUrl,ParameterValue=<GATEWAY_MCP_URL> \
-  --region us-east-1
+```text
+현재 티켓 통계 알려줘
+우선순위 높은 티켓 보여줘
+노트북이 안 켜져요
 ```
-
-```bash
-aws cloudformation wait stack-update-complete \
-  --stack-name agentcore-workshop-stack \
-  --region us-east-1
-```
-
-### 5-6. 확인
-
-RAG 질문:
-- `연차 휴가 신청 방법 알려줘`
-
-Gateway 질문:
-- `현재 티켓 통계 알려줘`
-- `우선순위 높은 티켓 보여줘`
-- `노트북이 고장났어요`
-
-기대 결과:
-- 문서형 질문은 RAG
-- 티켓/통계/조회 요청은 Gateway MCP Tool 사용
 
 ---
 
-## 6. 로컬 실행
+## 5. Step 4: Datadog LLM Observability 활성화
 
-### Step 1
+Datadog API Key가 환경변수 또는 `.env`에 있으면 자동으로 사용합니다.
 
-```bash
-cd agentcore-backend
-DEBUG=false chainlit run chainlit_app_basic.py --headless --host 127.0.0.1 --port 8011
-```
+지원하는 위치:
 
-브라우저:
-- `http://localhost:8011`
+- `./.env`
+- `./agentcore-backend/.env`
+- 현재 shell 환경변수
 
-### Step 2
+예시:
 
 ```bash
-cd agentcore-backend
-DEBUG=false chainlit run chainlit_app_rag.py --headless --host 127.0.0.1 --port 8012
+export DD_API_KEY="<DATADOG_API_KEY>"
+./enable-datadog.sh
 ```
 
-브라우저:
-- `http://localhost:8012`
-
-필수:
-- `BEDROCK_KB_ID`
-
-### Step 3
+또는 `.env`에 이미 아래 값이 있으면 바로 실행합니다.
 
 ```bash
-cd agentcore-backend
-DEBUG=false chainlit run chainlit_app_gateway.py --headless --host 127.0.0.1 --port 8013
+DD_API_KEY=<DATADOG_API_KEY>
+GATEWAY_MCP_URL=<GATEWAY_MCP_URL>
 ```
 
-브라우저:
-- `http://localhost:8013`
+`enable-datadog.sh`는 다음을 수행합니다.
 
-필수:
-- `BEDROCK_KB_ID`
-- `GATEWAY_MCP_URL`
+- Datadog LLM Observability 설정 적용
+- 워크샵 앱을 Datadog 관측 대상으로 등록
+- Gateway 앱 재배포
+- Datadog LLM Observability trace 수집 활성화
+
+확인 위치:
+
+```text
+Datadog > LLM Observability > Traces
+앱: agentcore-backend
+```
+
+---
+
+## 6. 주요 URL 확인 명령어
+
+Workshop App URL:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name agentcore-workshop-stack \
+  --region us-east-1 \
+  --query "Stacks[0].Outputs[?OutputKey=='WorkshopAppUrl'].OutputValue" \
+  --output text \
+  --no-cli-pager
+```
+
+Helpdesk API URL:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name agentcore-workshop-stack \
+  --region us-east-1 \
+  --query "Stacks[0].Outputs[?OutputKey=='HelpdeskUrl'].OutputValue" \
+  --output text \
+  --no-cli-pager
+```
+
+Knowledge Base ID:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name agentcore-workshop-stack \
+  --region us-east-1 \
+  --query "Stacks[0].Outputs[?OutputKey=='KnowledgeBaseId'].OutputValue" \
+  --output text \
+  --no-cli-pager
+```
 
 ---
 
 ## 7. 리소스 정리
 
-스택 삭제:
-
 ```bash
 aws cloudformation delete-stack \
   --stack-name agentcore-workshop-stack \
-  --region us-east-1
+  --region us-east-1 \
+  --no-cli-pager
 ```
 
 ---
 
-## 9. 핵심 요약
+## 핵심 요약
 
-- `chatbot`
-  - LLM only
-- `rag`
-  - LLM + Knowledge Base
-  - 근거 문서 표시
-  - threshold 기반 RAG 품질 이슈 포함
-- `gateway`
-  - LLM + RAG + AgentCore Gateway + Helpdesk REST API
-  - direct REST fallback 없음
+- Step 1: 기본 챗봇 및 인프라 배포
+- Step 2: RAG 및 Knowledge Base 검색
+- Step 3: AgentCore Gateway로 Helpdesk API tool 연결
+- Step 4: Datadog LLM Observability 활성화 및 trace 확인
