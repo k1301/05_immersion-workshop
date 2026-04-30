@@ -2,3 +2,4 @@
 _old/
 agentcore-backend/chainlit.md
 .chainlit/
+enable-datadog.sh

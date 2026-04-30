@@ -10,8 +10,6 @@
    Bedrock Knowledge Base 기반 RAG 앱으로 업데이트합니다.
 3. `./deploy-gateway.sh`
    AgentCore Gateway MCP URL을 연결하고 Helpdesk API tool을 활성화합니다.
-4. `./enable-datadog.sh`
-   Datadog API Key를 적용하고 LLM Observability 관측 설정을 활성화합니다.
 
 이 저장소는 워크샵 진행에 맞춰 **배포 스크립트 중심**으로 정리한 버전입니다.
 
@@ -24,7 +22,6 @@
 - 리전: `us-east-1`
 - AWS CLI 설정 완료
 - Docker
-- Datadog 계정 및 API Key
 
 ---
 
@@ -78,7 +75,6 @@ Step 2는 기본 챗봇에 Bedrock Knowledge Base 검색을 추가합니다.
 - 사내 문서성 질문은 `search_kb` tool로 검색
 - 답변과 함께 근거 문서 표시
 - 검색 결과와 근거 문서를 바탕으로 답변
-- Datadog LLM Observability에서 RAG 검색 흐름을 확인 가능
 
 확인 질문 예시:
 
@@ -161,43 +157,16 @@ Step 3 특징:
 
 ---
 
-## 5. Step 4: Datadog LLM Observability 활성화
+## 5. Datadog 실습 연계
 
-Datadog API Key가 환경변수 또는 `.env`에 있으면 자동으로 사용합니다.
+Gateway 연결까지 완료한 뒤에는 Datadog 실습 가이드의 lab별 실행 스크립트로 앱을 재배포하여 LLM Observability 흐름을 확인할 수 있습니다.
 
-지원하는 위치:
+연계 시 필요한 값:
 
-- `./.env`
-- `./agentcore-backend/.env`
-- 현재 shell 환경변수
-
-예시:
-
-```bash
-export DD_API_KEY="<DATADOG_API_KEY>"
-./enable-datadog.sh
-```
-
-또는 `.env`에 이미 아래 값이 있으면 바로 실행합니다.
-
-```bash
-DD_API_KEY=<DATADOG_API_KEY>
-GATEWAY_MCP_URL=<GATEWAY_MCP_URL>
-```
-
-`enable-datadog.sh`는 다음을 수행합니다.
-
-- Datadog LLM Observability 설정 적용
-- 워크샵 앱을 Datadog 관측 대상으로 등록
-- Gateway 앱 재배포
-- Datadog LLM Observability trace 수집 활성화
-
-확인 위치:
-
-```text
-Datadog > LLM Observability > Traces
-앱: agentcore-backend
-```
+- `KnowledgeBaseId`
+- `HelpdeskUrl`
+- `Gateway MCP URL`
+- `Datadog API Key`
 
 ---
 
@@ -254,4 +223,4 @@ aws cloudformation delete-stack \
 - Step 1: 기본 챗봇 및 인프라 배포
 - Step 2: RAG 및 Knowledge Base 검색
 - Step 3: AgentCore Gateway로 Helpdesk API tool 연결
-- Step 4: Datadog LLM Observability 활성화 및 trace 확인
+- 이후 Datadog 실습 가이드와 연계하여 LLM Observability trace 확인
